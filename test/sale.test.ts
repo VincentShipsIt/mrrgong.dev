@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventToSad, eventToSale, formatAmount, tierFor, majorUnits } from "../src/sale.ts";
+import { eventToSale, formatAmount, tierFor, majorUnits } from "../src/sale.ts";
 
 const checkout = (over: Record<string, unknown> = {}) => ({
   id: "evt_1",
@@ -141,74 +141,5 @@ describe("tierFor", () => {
   });
   it("respects zero-decimal currencies", () => {
     expect(tierFor(100, "JPY", cfg)).toBe("big");
-  });
-});
-
-describe("eventToSale: sad events", () => {
-  const refund = (over: Record<string, unknown> = {}) => ({
-    id: "evt_r",
-    type: "charge.refunded",
-    created: 1_700_000_000,
-    livemode: true,
-    data: {
-      object: {
-        id: "ch_1",
-        amount: 4900,
-        amount_refunded: 4900,
-        currency: "usd",
-        billing_details: { name: "Ada Lovelace", email: "ada@example.com" },
-        refunds: { data: [{ id: "re_1", amount: 4900 }] },
-        ...over,
-      },
-    },
-  });
-  const cancel = (over: Record<string, unknown> = {}) => ({
-    id: "evt_c",
-    type: "customer.subscription.deleted",
-    created: 1_700_000_000,
-    livemode: true,
-    data: {
-      object: {
-        id: "sub_1",
-        currency: "usd",
-        items: { data: [{ quantity: 2, price: { unit_amount: 1500, currency: "usd" } }] },
-        ...over,
-      },
-    },
-  });
-
-  it("is ignored by eventToSale: sad events are opt-in", () => {
-    expect(eventToSale(refund())).toBeNull();
-    expect(eventToSale(cancel())).toBeNull();
-  });
-
-  it("maps a refund to the amount of the latest refund", () => {
-    expect(eventToSad(refund({ amount_refunded: 6000, refunds: { data: [{ id: "re_2", amount: 1100 }] } }))).toMatchObject({
-      kind: "refund",
-      amountMinor: 1100,
-      currency: "USD",
-      dedupeKey: "refund:re_2",
-      customerName: "Ada Lovelace",
-      customerEmail: "ada@example.com",
-    });
-  });
-  it("falls back to the cumulative refunded amount when Stripe omits the refund list", () => {
-    expect(eventToSad(refund({ refunds: undefined }))).toMatchObject({ amountMinor: 4900, dedupeKey: "refund:ch_1:4900" });
-  });
-  it("ignores a refund of nothing", () => {
-    expect(eventToSad(refund({ amount_refunded: 0, refunds: undefined }))).toBeNull();
-  });
-
-  it("maps a canceled subscription to what it was billing per interval", () => {
-    expect(eventToSad(cancel())).toMatchObject({ kind: "cancellation", amountMinor: 3000, currency: "USD", dedupeKey: "cancel:sub_1" });
-  });
-  it("ignores a canceled subscription with no flat price", () => {
-    expect(eventToSad(cancel({ items: { data: [{ price: { unit_amount: null, currency: "usd" } }] } }))).toBeNull();
-  });
-
-  it("ignores everything else", () => {
-    expect(eventToSad(checkout())).toBeNull();
-    expect(eventToSad({ type: "charge.refunded" })).toBeNull();
-    expect(eventToSad(null)).toBeNull();
   });
 });

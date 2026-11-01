@@ -21,16 +21,15 @@ function monthlyFactor(interval: unknown, count: number): number | null {
  * MRR in each currency's minor unit from Stripe subscription objects.
  * Only `active` subscriptions count. Items without a flat `unit_amount` (metered or tiered)
  * are skipped rather than guessed: an honest undercount beats an invented number.
- * Discounts whose `end` has passed are ignored; a fixed `amount_off` comes off each invoice
- * (once, in the billing interval) before the result is normalised to a month.
  */
 export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.floor(Date.now() / 1000)): Record<string, number> {
   const out: Record<string, number> = {};
   for (const s of subscriptions) {
     if (!isObj(s) || s.status !== "active" || !isObj(s.items) || !Array.isArray(s.items.data)) continue;
 
-    // Per currency: what one invoice charges, and what that is per month.
-    const byCurrency: Record<string, { invoice: number; monthly: number }> = {};
+    const byCurrency: Record<string, number> = {};
+    /** Monthly factor of the first item: a fixed coupon applies to the invoice, whose cadence that is. */
+    let invoiceFactor: number | null = null;
     for (const it of s.items.data) {
       if (!isObj(it) || !isObj(it.price)) continue;
       const price = it.price;
@@ -38,27 +37,25 @@ export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.f
       if (!rec || typeof price.unit_amount !== "number" || typeof price.currency !== "string") continue;
       const factor = monthlyFactor(rec.interval, typeof rec.interval_count === "number" ? rec.interval_count : 1);
       if (factor === null) continue;
+      invoiceFactor ??= factor;
       const qty = typeof it.quantity === "number" ? it.quantity : 1;
       const cur = price.currency.toUpperCase();
-      const invoice = price.unit_amount * qty;
-      const total = (byCurrency[cur] ??= { invoice: 0, monthly: 0 });
-      total.invoice += invoice;
-      total.monthly += invoice * factor;
+      byCurrency[cur] = (byCurrency[cur] ?? 0) + price.unit_amount * qty * factor;
     }
 
-    const discounts = (Array.isArray(s.discounts) ? s.discounts : []).filter(
-      (d) => !(isObj(d) && typeof d.end === "number" && d.end <= nowSeconds),
-    );
-    for (const [cur, { invoice, monthly }] of Object.entries(byCurrency)) {
-      const ratio = invoice > 0 ? monthly / invoice : 0;
-      let value = invoice;
+    const discounts = Array.isArray(s.discounts) ? s.discounts : [];
+    for (const [cur, amount] of Object.entries(byCurrency)) {
+      let value = amount;
       for (const d of discounts) {
-        const coupon = isObj(d) && isObj(d.coupon) ? d.coupon : null;
-        if (!coupon) continue;
+        if (!isObj(d) || !isObj(d.coupon)) continue;
+        const coupon = d.coupon;
+        // A one-off coupon is not recurring revenue. A repeating one stops at `end`.
+        if (coupon.duration === "once") continue;
+        if (typeof d.end === "number" && d.end <= nowSeconds) continue;
         if (typeof coupon.percent_off === "number") value *= 1 - coupon.percent_off / 100;
-        else if (typeof coupon.amount_off === "number") value -= coupon.amount_off;
+        else if (typeof coupon.amount_off === "number" && invoiceFactor !== null) value -= coupon.amount_off * invoiceFactor;
       }
-      out[cur] = (out[cur] ?? 0) + Math.max(0, Math.round(value * ratio));
+      out[cur] = (out[cur] ?? 0) + Math.max(0, Math.round(value));
     }
   }
   return out;

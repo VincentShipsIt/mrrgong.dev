@@ -45,65 +45,6 @@ const str = (v: unknown): string | undefined => (typeof v === "string" && v.leng
 const idOf = (v: unknown): string | undefined => (isObj(v) ? str(v.id) : str(v));
 
 /**
- * Refunds and canceled subscriptions, for the opt-in sad gong. Kept apart from `eventToSale`
- * so nothing celebrates them unless the caller asks.
- * - `charge.refunded`: the latest refund's amount, falling back to the cumulative refunded amount.
- * - `customer.subscription.deleted`: what the subscription billed per interval.
- */
-export function eventToSad(event: unknown): Sale | null {
-  if (!isObj(event) || !isObj(event.data) || !isObj(event.data.object)) return null;
-  const obj = event.data.object;
-  const created = typeof event.created === "number" ? event.created : Math.floor(Date.now() / 1000);
-  const livemode = event.livemode === true;
-
-  switch (event.type) {
-    case "charge.refunded": {
-      const currency = str(obj.currency);
-      const chargeId = str(obj.id);
-      if (!currency) return null;
-      const refunds = isObj(obj.refunds) && Array.isArray(obj.refunds.data) ? obj.refunds.data : [];
-      const latest = refunds[0];
-      const refundId = isObj(latest) ? str(latest.id) : undefined;
-      const latestAmount = isObj(latest) && typeof latest.amount === "number" ? latest.amount : undefined;
-      const amount = latestAmount ?? (typeof obj.amount_refunded === "number" ? obj.amount_refunded : 0);
-      if (amount <= 0) return null;
-      const billing = isObj(obj.billing_details) ? obj.billing_details : {};
-      return {
-        dedupeKey: refundId && latestAmount !== undefined ? `refund:${refundId}` : `refund:${chargeId ?? str(event.id) ?? created}:${amount}`,
-        amountMinor: amount,
-        currency: currency.toUpperCase(),
-        kind: "refund",
-        livemode,
-        customerName: str(billing.name),
-        customerEmail: str(billing.email),
-        created,
-      };
-    }
-    case "customer.subscription.deleted": {
-      const items = isObj(obj.items) && Array.isArray(obj.items.data) ? obj.items.data : [];
-      let total = 0;
-      let currency = str(obj.currency);
-      for (const it of items) {
-        if (!isObj(it) || !isObj(it.price) || typeof it.price.unit_amount !== "number") continue;
-        total += it.price.unit_amount * (typeof it.quantity === "number" ? it.quantity : 1);
-        currency ??= str(it.price.currency);
-      }
-      if (total <= 0 || !currency) return null;
-      return {
-        dedupeKey: `cancel:${str(obj.id) ?? str(event.id) ?? created}`,
-        amountMinor: total,
-        currency: currency.toUpperCase(),
-        kind: "cancellation",
-        livemode,
-        created,
-      };
-    }
-    default:
-      return null;
-  }
-}
-
-/**
  * Turns a Stripe event into a Sale, or null if it is not something to celebrate.
  *
  * - One-time payments come from `checkout.session.completed` (mode=payment, paid).
