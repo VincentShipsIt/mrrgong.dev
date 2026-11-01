@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Builds dist/MRRGong.app (release, ad-hoc signed, menu bar only).
+# Builds dist/MRRGong.app (release, menu bar only).
+#
+# Environment:
+#   VERSION        App version. Defaults to the root package.json version.
+#   SIGN_IDENTITY  codesign identity. Default "-" (ad-hoc). A Developer ID
+#                  identity enables the hardened runtime and a secure timestamp,
+#                  which notarization requires.
+#   KEYCHAIN       Optional keychain holding SIGN_IDENTITY.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -10,7 +17,13 @@ case "${DEVELOPER_DIR:-}" in
 esac
 
 APP="dist/MRRGong.app"
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-$(scripts/read-version.sh)}"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+# The version is interpolated into Info.plist, so only accept plain MAJOR.MINOR.PATCH.
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "VERSION must be MAJOR.MINOR.PATCH, got '$VERSION'" >&2
+  exit 64
+fi
 
 swift build -c release
 BIN="$(swift build -c release --show-bin-path)/MRRGong"
@@ -41,5 +54,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
-echo "Built $APP"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+  codesign --force --sign - "$APP"
+else
+  codesign --force --options runtime --timestamp \
+    ${KEYCHAIN:+--keychain "$KEYCHAIN"} --sign "$SIGN_IDENTITY" "$APP"
+fi
+codesign --verify --strict --verbose=2 "$APP"
+echo "Built $APP ($VERSION)"
