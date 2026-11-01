@@ -86,6 +86,9 @@ stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.ses
 | `GONG_BIG_AT` / `GONG_HUGE_AT` | `100` / `1000` | Major units (dollars, not cents) for the louder tiers. Not currency-converted. |
 | `GONG_MODE` | `calm` | `calm`, `indie` or `broker` |
 | `GONG_MILESTONES` | `true` | First sale, sale counts, MRR and streak milestones |
+| `GONG_SALE_MILESTONES` | `10,100,1000,10000` | Lifetime sale counts to announce (the first sale always is). `none` turns them off |
+| `GONG_MRR_MILESTONES` | `100,500,1000,5000,10000,25000,50000,100000` | MRR thresholds in major units. `none` turns them off |
+| `GONG_SALES_SO_FAR` | – | Sales made before you installed mrrgong, so an existing shop doesn't announce a "first sale" |
 | `GONG_SAD` | `false` | Announce refunds and canceled subscriptions |
 | `NTFY_TOPIC`, `NTFY_SERVER` | –, `https://ntfy.sh` | Phone push |
 | `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` | – | All four, or none. Milestones go to X |
@@ -101,11 +104,11 @@ Test-mode events are labelled `[TEST]`.
 
 ## Milestones
 
-Milestones fire once, ever, and are remembered across restarts. The Node server keeps them in `milestones.json` next to its other state (set a data dir, as for dedupe; without one they reset on restart). If several thresholds are passed at once only the highest is announced. The first MRR reading after a fresh install is recorded silently, so installing mrrgong on a $2k business doesn't celebrate $100, $500 and $1k.
+Milestones fire once, ever, and are remembered across restarts. Tune the ladders with `GONG_SALE_MILESTONES` and `GONG_MRR_MILESTONES`, and set `GONG_SALES_SO_FAR` if you already have sales. The Node server keeps them in `milestones.json` next to its other state (set a data dir, as for dedupe; without one they reset on restart). If several thresholds are passed at once only the highest is announced. The first MRR reading after a fresh install is recorded silently, so installing mrrgong on a $2k business doesn't celebrate $100, $500 and $1k.
 
 - Only live-mode sales count, and refunds and cancellations never do. Test-mode Stripe keys are not tracked for MRR.
 - Milestones go to every channel (Discord, Slack, the browser gong). They contain only amounts and counts, never customer details.
-- **Workers:** sale milestones work when the `DEDUPE` KV namespace is bound (the count lives there; KV is eventually consistent, so under a race a milestone can in rare cases be missed or repeated once). Without KV they are off. MRR milestones need the Node server, since Workers have no MRR watcher.
+- **Workers:** sale milestones work when the `GONG_KV` KV namespace is bound (the count lives there; KV is eventually consistent, so under a race a milestone can in rare cases be missed or repeated once). Without KV they are off. MRR milestones need the Node server, since Workers have no MRR watcher.
 - Rehearse with `npm run simulate -- --mrr 5000` or `-- --sales 100`: previews are signed, test-mode only, and never touch the real counters.
 
 ## MRR watcher and day streak (Node server)

@@ -58,6 +58,12 @@ export interface GongConfig {
   /** Announce refunds and canceled subscriptions. */
   sad: boolean;
   milestones: boolean;
+  /** Lifetime sale counts announced after the first sale. */
+  saleMilestones: number[];
+  /** MRR thresholds in major units. */
+  mrrMilestones: number[];
+  /** Sales made before mrrgong was installed. */
+  salesSoFar?: number;
   /** Major units. A sale at or above this gets the "big" gong. */
   bigAt: number;
   /** Major units. A sale at or above this gets the full ceremony. */

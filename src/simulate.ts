@@ -1,5 +1,6 @@
 /**
- * `npm run simulate [amountInDollars] [sale|subscription|renewal|refund|cancel]`:
+ * `npm run simulate [amountInDollars] [sale|subscription|renewal|refund|cancel]`, or
+ * `npm run simulate -- --mrr 5000` / `--sales 100` to rehearse a milestone (counters stay untouched):
  * sends a correctly signed fake Stripe event to a running mrrgong so you can hear the gong
  * without touching Stripe. Events are test-mode (never public, never counted for milestones) unless SIM_LIVE=1.
  */
@@ -11,11 +12,25 @@ if (!secret) {
   process.exit(1);
 }
 const target = process.env.GONG_URL ?? `http://localhost:${process.env.PORT ?? 8787}/webhook`;
-const dollars = Number(process.argv[2] ?? 49);
+const args = process.argv.slice(2);
+const flag = (name: string): number | undefined => {
+  const at = args.indexOf(name);
+  if (at === -1) return undefined;
+  const n = Number(args[at + 1]);
+  if (!Number.isFinite(n) || n <= 0) {
+    console.error(`${name} needs a positive number, e.g. ${name} 100`);
+    process.exit(1);
+  }
+  return n;
+};
+const mrrPreview = flag("--mrr");
+const salesPreview = flag("--sales");
+const positional = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
+const dollars = Number(positional[0] ?? 49);
 const now = Math.floor(Date.now() / 1000);
 const id = Math.random().toString(36).slice(2, 10);
 
-const kind = process.argv[3] ?? "sale";
+const kind = positional[1] ?? "sale";
 const cents = Math.round(dollars * 100);
 const base = { id: `evt_sim_${id}`, created: now, livemode: process.env.SIM_LIVE === "1" };
 const price = { unit_amount: cents, currency: "usd", recurring: { interval: "month", interval_count: 1 } };
@@ -38,7 +53,12 @@ const payloads: Record<string, unknown> = {
     data: { object: { id: `sub_sim_${id}`, status: "canceled", items: { data: [{ quantity: 1, price }] } } },
   },
 };
-const payload = payloads[kind];
+const preview = mrrPreview !== undefined
+  ? { kind: "mrr", amount: mrrPreview, currency: process.env.GONG_CURRENCY ?? "usd" }
+  : salesPreview !== undefined ? { kind: "sales", count: Math.round(salesPreview) } : undefined;
+const payload = preview
+  ? { id: `evt_sim_${id}`, type: "mrrgong.simulate.milestone", created: now, livemode: false, data: { object: preview } }
+  : payloads[kind];
 if (!payload) {
   console.error(`unknown event "${kind}", use one of: ${Object.keys(payloads).join(", ")}`);
   process.exit(1);

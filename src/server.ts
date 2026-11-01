@@ -79,6 +79,8 @@ export function createGongServer(options: ServerOptions): Server {
 
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   if (config.stripeApiKey) {
+    const testKey = /^(rk|sk)_test_/.test(config.stripeApiKey);
+    if (testKey) log("STRIPE_API_KEY is a test-mode key: MRR is shown but milestones are not tracked");
     watcher = createMrrWatcher({
       apiKey: config.stripeApiKey,
       goalMajor: config.mrrGoal,
@@ -88,7 +90,8 @@ export function createGongServer(options: ServerOptions): Server {
       log,
       onUpdate: (summary) => {
         broadcast("mrr", summary);
-        void gong.onMrr(summary);
+        // A test-mode key reads test subscriptions; they must not use up real milestones.
+        if (!testKey) void gong.onMrr(summary);
       },
     });
     void watcher.refresh();
