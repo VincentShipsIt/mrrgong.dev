@@ -58,7 +58,7 @@ describe("server", () => {
     const { base } = await start();
     const res = await fetch(`${base}/gong`);
     expect(res.headers.get("content-type")).toContain("text/html");
-    expect(await res.text()).toContain("Sales Gong");
+    expect(await res.text()).toContain("MRR Gong");
   });
 
   it("pushes sales to browsers over SSE", async () => {

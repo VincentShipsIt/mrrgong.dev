@@ -1,12 +1,12 @@
 {
-  "name": "salesgong",
+  "name": "mrrgong",
   "version": "0.1.0",
   "description": "Strike a gong in Discord, Slack and your browser every time Stripe gets you a sale.",
   "license": "MIT",
   "type": "module",
   "engines": { "node": ">=20" },
   "main": "dist/handler.js",
-  "bin": { "salesgong": "dist/cli.js" },
+  "bin": { "mrrgong": "dist/cli.js" },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

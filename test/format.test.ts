@@ -60,7 +60,7 @@ describe("headline", () => {
 describe("discordPayload", () => {
   it("builds an embed with a tier color and no mentions allowed", () => {
     const p = discordPayload(sale(), "big", "masked");
-    expect(p.username).toBe("Sales Gong");
+    expect(p.username).toBe("MRR Gong");
     expect(p.allowed_mentions).toEqual({ parse: [] });
     expect(p.embeds).toHaveLength(1);
     expect(p.embeds[0]?.description).toContain("Ada Lovelace");

@@ -51,7 +51,7 @@ function details(sale: Sale, visibility: CustomerVisibility): string {
 
 export function discordPayload(sale: Sale, tier: Tier, visibility: CustomerVisibility) {
   return {
-    username: "Sales Gong",
+    username: "MRR Gong",
     // Customer names/emails are attacker-controlled: never let them ping anyone.
     allowed_mentions: { parse: [] as string[] },
     embeds: [

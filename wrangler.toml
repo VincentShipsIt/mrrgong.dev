@@ -1,4 +1,4 @@
-name = "salesgong"
+name = "mrrgong"
 main = "src/worker.ts"
 compatibility_date = "2026-01-01"
 

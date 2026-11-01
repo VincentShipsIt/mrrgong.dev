@@ -1,6 +1,6 @@
 /**
  * `npm run simulate [amountInDollars]`: sends a correctly signed fake sale to a
- * running salesgong so you can hear the gong without touching Stripe.
+ * running mrrgong so you can hear the gong without touching Stripe.
  */
 import { createHmac } from "node:crypto";
 

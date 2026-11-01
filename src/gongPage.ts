@@ -6,7 +6,7 @@
 export const GONG_PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sales Gong</title>
+<title>MRR Gong</title>
 <style>
   :root { color-scheme: dark; --gold:#f5b301; --bg:#14110b; --fg:#fff4d6; }
   * { box-sizing: border-box; }
@@ -28,7 +28,7 @@ export const GONG_PAGE = `<!doctype html>
 <body>
 <canvas id="c"></canvas>
 <main id="main">
-  <h1>🔔 Sales Gong</h1>
+  <h1>🔔 MRR Gong</h1>
   <div id="amount"></div>
   <div id="who"></div>
   <div><button id="arm">Click to arm the gong</button><button id="test" class="ghost" hidden>Test strike</button></div>
@@ -72,7 +72,7 @@ export const GONG_PAGE = `<!doctype html>
   function celebrate(sale) {
     $("amount").textContent = sale.amount;
     $("who").textContent = sale.label || "";
-    document.title = sale.amount + " 🔔 Sales Gong";
+    document.title = sale.amount + " 🔔 MRR Gong";
     $("main").classList.remove("strike"); void $("main").offsetWidth; $("main").classList.add("strike");
     const strikes = sale.tier === "huge" ? 3 : sale.tier === "big" ? 2 : 1;
     for (let i = 0; i < strikes; i++) setTimeout(() => strike(sale.tier), i * 700);

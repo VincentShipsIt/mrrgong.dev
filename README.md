@@ -1,4 +1,4 @@
-# 🔔 salesgong
+# 🔔 mrrgong.dev
 
 Strike a gong every time Stripe gets you a sale.
 
@@ -34,7 +34,7 @@ npx wrangler deploy
 
 ```sh
 cp .env.example .env   # fill it in
-npm i && npm run dev   # or: docker build -t salesgong . && docker run --env-file .env -p 8787:8787 salesgong
+npm i && npm run dev   # or: docker build -t mrrgong . && docker run --env-file .env -p 8787:8787 mrrgong
 ```
 
 Open `http://localhost:8787/gong`, click **arm the gong** (browsers require a click before playing sound), and leave it on a TV. Set `GONG_TOKEN` if the server is public; the page then lives at `/gong?token=…`.
