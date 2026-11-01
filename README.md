@@ -2,6 +2,10 @@
 
 Strike a gong every time Stripe gets you a sale.
 
+![Demo: striking the gong with confetti, then the macOS menu bar popover](docs/demo.gif)
+
+[Try the gong in your browser](https://mrrgong.dev) (the landing page lives in [`site/`](site/)).
+
 Stripe webhook → a loud, celebratory message in **Discord** and **Slack**, plus an optional **browser gong** (sound + confetti) for the spare monitor next to your desk. Bigger sales get a bigger gong.
 
 ```
