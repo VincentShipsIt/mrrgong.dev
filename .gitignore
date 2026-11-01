@@ -8,3 +8,6 @@ mrr-history.json
 mrr-history.json.tmp
 mrrgong-state.json
 mrrgong-state.json.tmp
+apps/mac/.build
+apps/mac/dist
+.DS_Store
