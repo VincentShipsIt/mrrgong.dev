@@ -64,15 +64,16 @@
   .btn.ghost:hover { background:#2B2410; color:var(--fg); border-color:var(--gold); }
   .hint { color:var(--muted); font-size:.9rem; margin:14px 0 0; }
   .cta { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:22px; }
-  ol.steps { list-style:none; padding:0; margin:20px 0 0; display:grid; gap:16px; counter-reset:s; }
+  ol.steps { list-style:none; padding:0; margin:20px 0 0; display:grid; grid-template-columns:minmax(0,1fr); gap:16px; counter-reset:s; }
   ol.steps li { counter-increment:s; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; }
   ol.steps li::before { content:counter(s); display:inline-grid; place-items:center; width:1.9em; height:1.9em; border-radius:50%; background:var(--gold); color:#2A2000; font-weight:800; margin-right:.6em; }
   ol.steps h3 { display:inline; font-size:1.05rem; margin:0; }
   pre { margin:12px 0 0; padding:14px 16px; background:#0C0A06; border:1px solid var(--line); border-radius:12px; overflow-x:auto; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; color:#FFE9A8; }
   pre:focus-visible { outline:3px solid var(--gold); }
-  p.note { color:var(--muted); }
-  .mac { display:grid; grid-template-columns:1fr; gap:28px; align-items:center; }
-  @media (min-width:760px) { .mac { grid-template-columns:1.2fr 1fr; } }
+  p.note { color:var(--muted); overflow-wrap:anywhere; }
+  p.note code { font-size:.9em; }
+  .mac { display:grid; grid-template-columns:minmax(0,1fr); gap:28px; align-items:center; }
+  @media (min-width:760px) { .mac { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); } }
   .mac img { width:100%; max-width:360px; height:auto; border-radius:16px; border:1px solid var(--line); justify-self:center; }
   ul.ticks { padding-left:1.2em; }
   ul.ticks li { margin:.4em 0; }
