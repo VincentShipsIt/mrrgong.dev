@@ -8,6 +8,8 @@ GONG_BIG_AT = "100"
 GONG_HUGE_AT = "1000"
 
 # Durable dedupe so a retried Stripe event is announced once, even across isolates.
+# The same namespace stores the lifetime sale count, so sale milestones (GONG_SALE_MILESTONES)
+# only work with it bound.
 # Create it with `npx wrangler kv namespace create DEDUPE`, then paste the id below and uncomment.
 # [[kv_namespaces]]
 # binding = "DEDUPE"

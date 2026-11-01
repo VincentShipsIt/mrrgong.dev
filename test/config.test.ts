@@ -66,4 +66,15 @@ describe("loadConfig", () => {
     expect(c.slackWebhookUrl).toBeUndefined();
     expect(c.bigAt).toBe(100);
   });
+
+  it("reads milestone thresholds, with defaults, 'none' and a sales head start", () => {
+    expect(loadConfig(base)).toMatchObject({ mrrMilestones: [100, 500, 1000, 5000, 10000], saleMilestones: [1, 10, 100, 1000], salesSoFar: 0 });
+    const c = loadConfig({ ...base, GONG_MRR_MILESTONES: "2000, 250", GONG_SALE_MILESTONES: "none", GONG_SALES_SO_FAR: "41.9" });
+    expect(c).toMatchObject({ mrrMilestones: [250, 2000], saleMilestones: [], salesSoFar: 41 });
+  });
+
+  it("rejects junk milestone thresholds", () => {
+    expect(() => loadConfig({ ...base, GONG_MRR_MILESTONES: "lots" })).toThrow(/GONG_MRR_MILESTONES/);
+    expect(() => loadConfig({ ...base, GONG_SALE_MILESTONES: "0,5" })).toThrow(/GONG_SALE_MILESTONES/);
+  });
 });

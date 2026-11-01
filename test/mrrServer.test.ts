@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -99,5 +100,50 @@ describe("GET /mrr", () => {
     servers.push(server);
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     expect((await fetch(`${base}/mrr`)).status).toBe(503);
+  });
+});
+
+describe("MRR milestones", () => {
+  const sale = (id: string) => {
+    const body = JSON.stringify({
+      id: `evt_${id}`, type: "checkout.session.completed", created: 1, livemode: true,
+      data: { object: { id: `cs_${id}`, mode: "payment", payment_status: "paid", amount_total: 1000, currency: "usd", payment_intent: `pi_${id}` } },
+    });
+    const t = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", "whsec_t").update(`${t}.${body}`).digest("hex");
+    return { body, headers: { "stripe-signature": `t=${t},v1=${sig}` } };
+  };
+  const discordTitles = (fetchMock: ReturnType<typeof vi.fn>) =>
+    fetchMock.mock.calls
+      .filter((c) => String(c[0]).startsWith("https://discord.com"))
+      .map((c) => JSON.parse(String((c as unknown as [string, RequestInit])[1].body)).embeds?.[0]?.title as string);
+  const env = { DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1/a", GONG_SALE_MILESTONES: "none", GONG_MRR_MILESTONES: "500" };
+
+  it("stays silent on the first reading, then gongs when MRR crosses a threshold", async () => {
+    const { base, fetchMock, setSubs } = await start({ ...env, STRIPE_API_KEY: "rk_live_x" });
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some((c) => String(c[0]).startsWith("https://api.stripe.com"))).toBe(true));
+    await fetch(`${base}/mrr`); // seeded at $300: nothing announced
+    expect(discordTitles(fetchMock).some((t) => t.includes("MRR crossed"))).toBe(false);
+
+    setSubs(6); // $600
+    const { body, headers } = sale("a");
+    await fetch(`${base}/webhook`, { method: "POST", headers, body }); // a sale triggers a refresh
+    await vi.waitFor(() => expect(discordTitles(fetchMock)).toContain("🔔🔔🔔 🎉 MRR crossed $500.00!"));
+
+    setSubs(7);
+    const next = sale("b");
+    await fetch(`${base}/webhook`, { method: "POST", headers: next.headers, body: next.body });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(discordTitles(fetchMock).filter((t) => t.includes("MRR crossed"))).toHaveLength(1);
+  });
+
+  it("does not track MRR milestones with a test-mode Stripe key", async () => {
+    const { base, fetchMock, setSubs } = await start({ ...env, STRIPE_API_KEY: "rk_test_x" });
+    await fetch(`${base}/mrr`);
+    setSubs(6);
+    const { body, headers } = sale("t");
+    await fetch(`${base}/webhook`, { method: "POST", headers, body });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(discordTitles(fetchMock).some((t) => t.includes("MRR crossed"))).toBe(false);
   });
 });

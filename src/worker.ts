@@ -1,11 +1,15 @@
 /**
  * Cloudflare Workers entry. Set secrets with `wrangler secret put STRIPE_WEBHOOK_SECRET` etc.
  * Bind a KV namespace as `DEDUPE` (see wrangler.toml) so retried events are announced once
- * even across isolates; without it, dedupe is per isolate and best effort.
+ * even across isolates; without it, dedupe is per isolate and best effort. The same namespace
+ * keeps the lifetime sale count for milestones; with no KV, sale milestones are off (an
+ * in-memory count would reset with every isolate and announce "first sale" again). MRR
+ * milestones need the long-running server: Workers have no MRR watcher.
  */
 import { loadConfig, type Env } from "./config.ts";
 import { fallbackDedupe, kvDedupe, memoryDedupe, type KvLike } from "./dedupe.ts";
 import { createHandler } from "./handler.ts";
+import { createMilestoneTracker, kvMilestoneStore } from "./milestones.ts";
 
 export type WorkerEnv = { DEDUPE?: KvLike } & Record<string, string | KvLike | undefined>;
 
@@ -25,6 +29,9 @@ export default {
     }
     const log = console.error;
     const dedupe = env.DEDUPE ? fallbackDedupe(kvDedupe(env.DEDUPE), memory, log) : memory;
-    return createHandler({ config, dedupe, log })(request);
+    const milestones = env.DEDUPE
+      ? createMilestoneTracker(kvMilestoneStore(env.DEDUPE), { mrr: [], sales: config.saleMilestones, initialSales: config.salesSoFar }, log)
+      : undefined;
+    return createHandler({ config, dedupe, milestones, log })(request);
   },
 };

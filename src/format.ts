@@ -1,5 +1,5 @@
 import { formatAmount } from "./sale.ts";
-import { SAD_KINDS, type CustomerVisibility, type Sale, type Tier } from "./types.ts";
+import { SAD_KINDS, type CustomerVisibility, type Milestone, type Sale, type Tier } from "./types.ts";
 
 export function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -87,4 +87,19 @@ export function slackPayload(sale: Sale, tier: Tier, visibility: CustomerVisibil
       },
     ],
   };
+}
+
+const MILESTONE_COLOR = 0xe5226a; // the "huge" magenta: this is the big one
+
+export function discordMilestonePayload(milestone: Milestone) {
+  return {
+    username: "MRR Gong",
+    allowed_mentions: { parse: [] as string[] },
+    embeds: [{ title: `🔔🔔🔔 ${milestone.title}`, color: MILESTONE_COLOR, timestamp: new Date().toISOString() }],
+  };
+}
+
+export function slackMilestonePayload(milestone: Milestone) {
+  const title = `🔔🔔🔔 ${milestone.title}`;
+  return { text: title, blocks: [{ type: "section", text: { type: "mrkdwn", text: `*${escapeSlack(title)}*` } }] };
 }
