@@ -32,15 +32,20 @@ Stripe webhook → a loud, celebratory message in **Discord** and **Slack**, plu
 ### Deploy on Cloudflare Workers (free tier is plenty)
 
 ```sh
-npm i && npx wrangler secret put STRIPE_WEBHOOK_SECRET
+npm i
+npx wrangler secret put STRIPE_WEBHOOK_SECRET
 npx wrangler secret put DISCORD_WEBHOOK_URL   # and/or SLACK_WEBHOOK_URL
-npx wrangler deploy
+npm run deploy                                # = wrangler deploy
 ```
+
+Wrangler prints your `https://mrrgong.<you>.workers.dev` URL. Check it with `curl https://<that-url>/health` (answers `ok`), then point the Stripe endpoint at `/webhook`. To test end to end, run `GONG_URL=https://<that-url>/webhook STRIPE_WEBHOOK_SECRET=whsec_... npm run simulate` and the sale lands in your channel.
+
+If a secret is missing, the Worker answers `500` naming the variable (for example `STRIPE_WEBHOOK_SECRET is required`); add it with `wrangler secret put` and retry. Stripe retries failed deliveries, so nothing is lost. The Worker has no runtime dependencies.
 
 To keep dedupe keys and milestone counters across Workers isolates, create a KV namespace and bind it as `GONG_KV`:
 
 ```sh
-npx wrangler kv namespace create GONG_KV   # then paste the id into wrangler.toml
+npx wrangler kv namespace create GONG_KV   # then uncomment [[kv_namespaces]] in wrangler.toml and paste the id
 ```
 
 ### Or run the Node server / Docker (adds the browser gong)
@@ -139,7 +144,7 @@ Failed payments and `payment_intent.succeeded` (which duplicates the above) are 
 ## Known limits
 
 - Dedupe keys and milestone counters live in `mrrgong-state.json` in `GONG_DATA_DIR` (Node; the Docker image uses the `/data` volume) or the `GONG_KV` namespace (Workers). Without KV, a different Workers isolate can in rare cases re-announce a retried event. KV is not atomic, so two sales landing at the same instant could skip a count milestone.
-- On Workers there is no browser gong, MRR watcher or MRR/streak milestones (sale-count milestones work) (no shared state between isolates). It needs the Node server, or a Durable Object, which is a possible future addition.
+- On Workers there is no browser gong, MRR watcher or MRR/streak milestones (sale-count milestones work with `GONG_KV`), because isolates share no state. Those need the Node server; a Durable Object is a possible future addition.
 - Newer Stripe API versions no longer put `payment_intent` on invoices; dedupe then falls back to the invoice id.
 
 ## Development
