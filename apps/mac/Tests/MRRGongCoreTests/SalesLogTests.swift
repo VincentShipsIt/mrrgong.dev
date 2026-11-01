@@ -29,6 +29,17 @@ final class SalesLogTests: XCTestCase {
         XCTAssertEqual(today.totalMajor, 249.5, accuracy: 0.001)
     }
 
+    func testRefundsAndCancellationsAreLoggedButNotCountedAsSalesToday() {
+        var log = SalesLog(calendar: cal)
+        log.add(sale("$240.00"), at: t0)
+        log.add(sale("$49.00", kind: .refund), at: t0.addingTimeInterval(30))
+        log.add(sale("$29.00", kind: .cancellation), at: t0.addingTimeInterval(60))
+        XCTAssertEqual(log.recent.count, 3)
+        let today = log.today(now: t0.addingTimeInterval(120))
+        XCTAssertEqual(today.count, 1)
+        XCTAssertEqual(today.totalMajor, 240, accuracy: 0.001)
+    }
+
     func testUnparseableAmountCountsAsSaleButNotMoney() {
         var log = SalesLog(calendar: cal)
         log.add(sale("free"), at: t0)

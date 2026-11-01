@@ -19,7 +19,7 @@ Stripe webhook → a loud, celebratory message in **Discord** and **Slack**, plu
 
 1. Make a webhook in Discord (*Channel settings → Integrations → Webhooks*) and/or Slack (*Incoming Webhooks app*).
 2. Deploy (below), then in Stripe go to *Developers → Webhooks → Add endpoint* with URL `https://<your-host>/webhook` and these events:
-   `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`.
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`. With `GONG_SAD=true` it also reads `charge.refunded` and `customer.subscription.deleted`.
 3. Copy the endpoint's signing secret into `STRIPE_WEBHOOK_SECRET`.
 
 ### Deploy on Cloudflare Workers (free tier is plenty)
@@ -56,6 +56,7 @@ stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.ses
 | `SLACK_WEBHOOK_URL` | – | Must be an `https://hooks.slack.com/…` URL |
 | `GONG_BIG_AT` / `GONG_HUGE_AT` | `100` / `1000` | Major units (dollars, not cents) for the louder tiers. Not currency-converted. |
 | `GONG_RENEWALS` | `true` | Set `false` to celebrate only new customers |
+| `GONG_SAD` | `false` | Set `true` to log refunds and cancellations quietly (muted message, grey embed, no gong). They never reach public channels like X |
 | `GONG_CUSTOMER` | `masked` | `full`, `masked` (name, or `a**@domain.com`), or `none` |
 | `STRIPE_API_KEY` | – | Restricted read-only key (`rk_…`). Turns on the MRR watcher |
 | `MRR_GOAL`, `MRR_POLL_MINUTES` | –, `15` | Goal in major units; poll interval |
@@ -85,6 +86,8 @@ curl localhost:8787/mrr
 |---|---|
 | `checkout.session.completed` / `…async_payment_succeeded` | `mode=payment` and paid |
 | `invoice.paid` | amount paid > 0 (first subscription payment = "new subscriber", later = "renewal") |
+| `charge.refunded` | only with `GONG_SAD=true`; the latest refund's amount |
+| `customer.subscription.deleted` | only with `GONG_SAD=true`; the flat recurring amount that was canceled |
 
 Refunds, failed payments and `payment_intent.succeeded` (which duplicates the above) are ignored.
 

@@ -58,6 +58,7 @@ export function loadConfig(env: Env): GongConfig {
     bigAt,
     hugeAt,
     celebrateRenewals: env.GONG_RENEWALS?.trim().toLowerCase() !== "false",
+    sad: env.GONG_SAD?.trim().toLowerCase() === "true",
     customer,
     toleranceSeconds: 300,
   };

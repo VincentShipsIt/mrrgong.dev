@@ -52,5 +52,18 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(SaleKind.oneTime.title, "Sale")
         XCTAssertEqual(SaleKind.newSubscription.title, "New subscription")
         XCTAssertEqual(SaleKind.renewal.title, "Renewal")
+        XCTAssertEqual(SaleKind.refund.title, "Refund")
+        XCTAssertEqual(SaleKind.cancellation.title, "Canceled subscription")
+    }
+
+    func testSadKindsDecodeAndAreFlagged() throws {
+        for (raw, kind) in [("refund", SaleKind.refund), ("cancellation", .cancellation)] {
+            let json = #"{"amount":"$5.00","tier":"normal","kind":"\#(raw)"}"#
+            let e = try JSONDecoder().decode(SaleEvent.self, from: Data(json.utf8))
+            XCTAssertEqual(e.kind, kind)
+            XCTAssertTrue(e.kind.isSad)
+        }
+        XCTAssertFalse(SaleKind.oneTime.isSad)
+        XCTAssertFalse(SaleKind.renewal.isSad)
     }
 }

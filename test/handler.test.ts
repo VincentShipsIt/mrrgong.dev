@@ -139,4 +139,61 @@ describe("handler", () => {
     const { handle } = setup({ DISCORD_WEBHOOK_URL: "", SLACK_WEBHOOK_URL: "" });
     expect((await handle(signed(event()))).status).toBe(200);
   });
+
+  describe("sad gong", () => {
+    const refundEvent = (over: Record<string, unknown> = {}) =>
+      JSON.stringify({
+        id: "evt_r", type: "charge.refunded", created: Math.floor(Date.now() / 1000), livemode: true,
+        data: { object: { id: "ch_1", amount: 4900, amount_refunded: 4900, currency: "usd", refunds: { data: [{ id: "re_1", amount: 4900 }] }, ...over } },
+      });
+    const cancelEvent = JSON.stringify({
+      id: "evt_c", type: "customer.subscription.deleted", created: Math.floor(Date.now() / 1000), livemode: true,
+      data: { object: { id: "sub_1", items: { data: [{ quantity: 1, price: { unit_amount: 2900, currency: "usd" } }] } } },
+    });
+
+    it("is off by default: refunds and cancellations are ignored", async () => {
+      const { handle, fetchMock } = setup();
+      expect(await (await handle(signed(refundEvent()))).text()).toBe("ignored");
+      expect(await (await handle(signed(cancelEvent))).text()).toBe("ignored");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("posts a muted message to Discord and Slack when GONG_SAD=true", async () => {
+      const { handle, fetchMock } = setup({ GONG_SAD: "true" });
+      expect((await handle(signed(refundEvent()))).status).toBe(200);
+      expect((await handle(signed(cancelEvent))).status).toBe(200);
+      const bodies = fetchMock.mock.calls.map((c) => String(c[1]?.body));
+      expect(bodies.some((b) => b.includes("$49.00 refunded"))).toBe(true);
+      expect(bodies.some((b) => b.includes("$29.00 subscription canceled"))).toBe(true);
+      expect(bodies.join("")).not.toContain("GONG");
+    });
+
+    it("does not announce the same refund twice", async () => {
+      const { handle, fetchMock } = setup({ GONG_SAD: "true" });
+      await handle(signed(refundEvent()));
+      const calls = fetchMock.mock.calls.length;
+      expect(await (await handle(signed(refundEvent()))).text()).toBe("duplicate");
+      expect(fetchMock.mock.calls.length).toBe(calls);
+    });
+
+    it("never reaches a public sink", async () => {
+      const publicSink = Object.assign(vi.fn(async () => {}), { public: true });
+      const privateSink = vi.fn(async () => {});
+      const { handle } = setup({ GONG_SAD: "true" }, [publicSink, privateSink]);
+      await handle(signed(refundEvent()));
+      await handle(signed(cancelEvent));
+      expect(publicSink).not.toHaveBeenCalled();
+      expect(privateSink).toHaveBeenCalledTimes(2);
+      // Sales still reach public sinks.
+      await handle(signed(event()));
+      expect(publicSink).toHaveBeenCalledTimes(1);
+    });
+
+    it("says nothing when only public sinks exist", async () => {
+      const publicSink = Object.assign(vi.fn(async () => {}), { public: true });
+      const { handle } = setup({ GONG_SAD: "true", DISCORD_WEBHOOK_URL: "", SLACK_WEBHOOK_URL: "" }, [publicSink]);
+      expect(await (await handle(signed(refundEvent()))).text()).toBe("no sinks configured");
+      expect(publicSink).not.toHaveBeenCalled();
+    });
+  });
 });

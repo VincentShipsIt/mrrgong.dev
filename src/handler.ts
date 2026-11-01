@@ -1,8 +1,8 @@
 import { memoryDedupe } from "./dedupe.ts";
 import { discordPayload, slackPayload } from "./format.ts";
-import { eventToSale, tierFor } from "./sale.ts";
+import { eventToSad, eventToSale, tierFor } from "./sale.ts";
 import { verifyStripeSignature } from "./stripe.ts";
-import type { CustomerVisibility, DedupeStore, GongConfig, Sink } from "./types.ts";
+import { SAD_KINDS, type CustomerVisibility, type DedupeStore, type GongConfig, type Sink } from "./types.ts";
 
 async function postJson(fetchImpl: typeof fetch, url: string, body: unknown): Promise<void> {
   const res = await fetchImpl(url, {
@@ -66,14 +66,18 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       return text(400, "invalid json");
     }
 
-    const sale = eventToSale(event);
+    const sale = eventToSale(event) ?? (config.sad ? eventToSad(event) : null);
     if (!sale) return text(200, "ignored");
     if (sale.kind === "renewal" && !config.celebrateRenewals) return text(200, "ignored");
     if (await dedupe.has(sale.dedupeKey)) return text(200, "duplicate");
-    if (sinks.length === 0) return text(200, "no sinks configured");
 
-    const tier = tierFor(sale.amountMinor, sale.currency, config);
-    const results = await Promise.allSettled(sinks.map((sink) => sink(sale, tier)));
+    // Bad news stays in private channels.
+    const targets = SAD_KINDS.has(sale.kind) ? sinks.filter((sink) => !sink.public) : sinks;
+    if (targets.length === 0) return text(200, "no sinks configured");
+
+    // Refunds and churn are never "big": a muted message, whatever the amount.
+    const tier = SAD_KINDS.has(sale.kind) ? "normal" : tierFor(sale.amountMinor, sale.currency, config);
+    const results = await Promise.allSettled(targets.map((sink) => sink(sale, tier)));
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     for (const f of failures) log(`sink failed: ${f.reason instanceof Error ? f.reason.message : String(f.reason)}`);
 

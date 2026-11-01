@@ -1,5 +1,5 @@
 import { formatAmount } from "./sale.ts";
-import type { CustomerVisibility, Sale, Tier } from "./types.ts";
+import { SAD_KINDS, type CustomerVisibility, type Sale, type Tier } from "./types.ts";
 
 export function maskEmail(email: string): string {
   const at = email.indexOf("@");
@@ -22,6 +22,8 @@ const KIND_LABEL: Record<Sale["kind"], string> = {
   one_time: "sale",
   new_subscription: "new subscriber",
   renewal: "renewal",
+  refund: "refunded",
+  cancellation: "subscription canceled",
 };
 
 const GONG: Record<Tier, string> = {
@@ -32,6 +34,7 @@ const GONG: Record<Tier, string> = {
 
 export function headline(sale: Sale, tier: Tier): string {
   const test = sale.livemode ? "" : "[TEST] ";
+  if (SAD_KINDS.has(sale.kind)) return `${test}😔 ${formatAmount(sale.amountMinor, sale.currency)} ${KIND_LABEL[sale.kind]}`;
   return `${test}${GONG[tier]} ${formatAmount(sale.amountMinor, sale.currency)} ${KIND_LABEL[sale.kind]}`;
 }
 
@@ -40,6 +43,8 @@ const DISCORD_COLOR: Record<Tier, number> = {
   big: 0xff7a00, // orange
   huge: 0xe5226a, // magenta
 };
+
+const SAD_COLOR = 0x808080; // grey
 
 function details(sale: Sale, visibility: CustomerVisibility): string {
   const lines: string[] = [];
@@ -58,7 +63,7 @@ export function discordPayload(sale: Sale, tier: Tier, visibility: CustomerVisib
       {
         title: headline(sale, tier),
         description: details(sale, visibility) || undefined,
-        color: DISCORD_COLOR[tier],
+        color: SAD_KINDS.has(sale.kind) ? SAD_COLOR : DISCORD_COLOR[tier],
         timestamp: new Date(sale.created * 1000).toISOString(),
       },
     ],
