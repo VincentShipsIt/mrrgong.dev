@@ -19,9 +19,12 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var isMuted: Bool
     /// Bumped on every strike so the status item can flash.
     @Published public private(set) var flashCount = 0
+    /// Newest first. In memory only: a milestone is a moment, not a ledger.
+    @Published public private(set) var milestones: [MilestoneRecord] = []
 
     public static let pollInterval: Double = 60
     public static let sparklineDays = 14
+    public static let milestoneCapacity = 5
 
     private let settings: AppSettings
     private let fetcher: MRRFetching
@@ -156,6 +159,8 @@ public final class AppModel: ObservableObject {
             if let sale = try? JSONDecoder().decode(SaleEvent.self, from: data) { record(sale) }
         case "mrr":
             if let summary = try? JSONDecoder().decode(MRRSummary.self, from: data) { apply(summary) }
+        case "milestone":
+            if let milestone = try? JSONDecoder().decode(MilestoneEvent.self, from: data) { record(milestone) }
         default:
             break
         }
@@ -172,6 +177,15 @@ public final class AppModel: ObservableObject {
         sales.add(sale, at: now())
         try? sales.save(to: salesURL)
         if !sale.kind.isSad { strike(sale.tier) }
+    }
+
+    private func record(_ milestone: MilestoneEvent) {
+        let text = milestone.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let label = milestone.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        milestones.insert(MilestoneRecord(date: now(), text: text, label: label?.isEmpty == false ? label : nil), at: 0)
+        if milestones.count > Self.milestoneCapacity { milestones.removeLast(milestones.count - Self.milestoneCapacity) }
+        strike(.huge)
     }
 
     private func strike(_ tier: Tier) {

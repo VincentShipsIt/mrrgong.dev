@@ -70,3 +70,23 @@ public struct SaleEvent: Codable, Equatable, Sendable {
         self.label = label
     }
 }
+
+/// A named `milestone` SSE event: the server's celebration of a round number.
+/// `tier` is always "huge" today and is ignored: a milestone gets the full gong.
+public struct MilestoneEvent: Codable, Equatable, Sendable {
+    public var text: String
+    /// An extra flavour line (meme modes, AI writer). Customer-free, may be absent.
+    public var label: String?
+
+    public init(text: String, label: String? = nil) {
+        self.text = text
+        self.label = label
+    }
+}
+
+public struct MilestoneRecord: Equatable, Identifiable, Sendable {
+    public let id = UUID()
+    public let date: Date
+    public let text: String
+    public let label: String?
+}
