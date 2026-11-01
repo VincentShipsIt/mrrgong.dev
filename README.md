@@ -73,9 +73,9 @@ curl localhost:8787/mrr
 # {"mrrMinor":124700,"currency":"USD","formatted":"$1,247.00","todayDeltaMinor":2900,"streakDays":12,"goalMinor":200000,"goalPercentLeft":38}
 ```
 
-- It re-reads Stripe every `MRR_POLL_MINUTES` and right after each celebrated sale, and keeps one snapshot per UTC day in `mrr-history.json`.
+- It re-reads Stripe every `MRR_POLL_MINUTES` and right after each celebrated sale, and keeps one snapshot per UTC day in `$GONG_DATA_DIR/mrr-history.json`.
 - **Day streak** = consecutive days MRR ended higher than the day before. Today counts once it beats yesterday; being flat so far today doesn't break the streak. A dip (churn) or a missing day does. The number is never faked.
-- MRR counts `active` subscriptions only, normalised to a month. Percentage coupons are applied; metered/tiered prices are skipped. Multi-currency accounts track the biggest currency.
+- MRR counts `active` subscriptions only, normalised to a month. Coupons are applied (fixed amounts per invoice, ended ones ignored); metered/tiered prices are skipped. Multi-currency accounts track the biggest currency.
 - The streak starts counting from the day you turn it on.
 - Connected clients also get an `event: mrr` message on `/events`.
 
@@ -90,7 +90,7 @@ Refunds, failed payments and `payment_intent.succeeded` (which duplicates the ab
 
 ## Known limits
 
-- Dedupe is in-memory. A restart (or a different Workers isolate) can in rare cases re-announce a retried event. A KV/Redis-backed `DedupeStore` is a ~10-line addition.
+- Dedupe keys live for 7 days (Stripe retries for 3). Node keeps them in `$GONG_DATA_DIR/dedupe.json` (default `.`; `/data` in Docker, so mount a volume to keep them across container replacement). Workers use the optional `DEDUPE` KV binding in `wrangler.toml`. If the durable store fails, it logs a warning and falls back to memory instead of dropping the sale.
 - On Workers there is no browser gong or MRR history (no shared state between isolates). It needs the Node server, or a Durable Object, which is a possible future addition.
 - Newer Stripe API versions no longer put `payment_intent` on invoices; dedupe then falls back to the invoice id.
 

@@ -31,3 +31,46 @@ describe("worker", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("worker dedupe", () => {
+  function signedSale(id: string) {
+    const body = JSON.stringify({
+      id: `evt_${id}`, type: "checkout.session.completed", created: 1, livemode: true,
+      data: { object: { id: `cs_${id}`, mode: "payment", payment_status: "paid", amount_total: 1000, currency: "usd", payment_intent: `pi_${id}` } },
+    });
+    const t = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", env.STRIPE_WEBHOOK_SECRET).update(`${t}.${body}`).digest("hex");
+    return () => new Request("https://x/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body });
+  }
+  const fakeKv = () => {
+    const data = new Map<string, string>();
+    return { data, kv: { get: async (k: string) => data.get(k) ?? null, put: async (k: string, v: string) => void data.set(k, v) } };
+  };
+
+  it("announces once across isolates sharing a KV namespace", async () => {
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", f);
+    const { kv, data } = fakeKv();
+    const req = signedSale("kv1");
+    expect(await (await worker.fetch(req(), { ...env, DEDUPE: kv })).text()).toBe("gong");
+    expect([...data.keys()]).toEqual(["mrrgong:dedupe:pi_kv1"]);
+
+    vi.resetModules(); // a fresh isolate: empty memory, same KV
+    const { default: fresh } = await import("../src/worker.ts");
+    expect(await (await fresh.fetch(req(), { ...env, DEDUPE: kv })).text()).toBe("duplicate");
+    expect(f).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("still celebrates when KV is down, and warns", async () => {
+    const f = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", f);
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = { get: async () => { throw new Error("kv down"); }, put: async () => { throw new Error("kv down"); } };
+    const res = await worker.fetch(signedSale("kv2")(), { ...env, DEDUPE: broken });
+    expect(await res.text()).toBe("gong");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});

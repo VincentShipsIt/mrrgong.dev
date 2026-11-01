@@ -1,4 +1,7 @@
 import { createHmac } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config.ts";
@@ -7,11 +10,12 @@ import { createGongServer } from "../src/server.ts";
 const SECRET = "whsec_test";
 const servers: ReturnType<typeof createGongServer>[] = [];
 
-async function start(token?: string) {
+async function start(token?: string, dataDir?: string) {
   const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
   const server = createGongServer({
     config: loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1/a" }),
     token,
+    dataDir,
     fetch: fetchMock as unknown as typeof fetch,
   });
   await new Promise<void>((r) => server.listen(0, r));
@@ -91,5 +95,26 @@ describe("server", () => {
     const { base } = await start();
     const res = await fetch(`${base}/webhook`, { method: "POST", body: "x".repeat(1_100_000) });
     expect(res.status).toBe(413);
+  });
+});
+
+describe("durable dedupe", () => {
+  it("does not double-post when the server restarts between two identical deliveries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mrrgong-server-"));
+    try {
+      const { body, headers } = signedSale("restart");
+      const first = await start(undefined, dir);
+      expect(await (await fetch(`${first.base}/webhook`, { method: "POST", headers, body })).text()).toBe("gong");
+      expect(first.fetchMock).toHaveBeenCalledTimes(1);
+      const s = servers.pop()!;
+      s.closeAllConnections();
+      await new Promise((r) => s.close(r));
+
+      const second = await start(undefined, dir);
+      expect(await (await fetch(`${second.base}/webhook`, { method: "POST", headers, body })).text()).toBe("duplicate");
+      expect(second.fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

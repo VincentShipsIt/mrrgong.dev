@@ -140,13 +140,3 @@ describe("handler", () => {
     expect((await handle(signed(event()))).status).toBe(200);
   });
 });
-
-describe("memoryDedupe", () => {
-  it("remembers keys and evicts the oldest past its cap", () => {
-    const d = memoryDedupe(2);
-    d.add("a"); d.add("b"); d.add("c");
-    expect(d.has("a")).toBe(false);
-    expect(d.has("b")).toBe(true);
-    expect(d.has("c")).toBe(true);
-  });
-});

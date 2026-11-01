@@ -6,3 +6,9 @@ compatibility_date = "2026-01-01"
 [vars]
 GONG_BIG_AT = "100"
 GONG_HUGE_AT = "1000"
+
+# Durable dedupe so a retried Stripe event is announced once, even across isolates.
+# Create it with `npx wrangler kv namespace create DEDUPE`, then paste the id below and uncomment.
+# [[kv_namespaces]]
+# binding = "DEDUPE"
+# id = "<your-kv-namespace-id>"

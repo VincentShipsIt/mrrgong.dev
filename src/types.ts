@@ -42,6 +42,6 @@ export type Sink = (sale: Sale, tier: Tier) => Promise<void>;
 
 /** Remembers which sales were already celebrated. */
 export interface DedupeStore {
-  has(key: string): boolean;
-  add(key: string): void;
+  has(key: string): Promise<boolean>;
+  add(key: string): Promise<void>;
 }

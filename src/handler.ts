@@ -1,21 +1,8 @@
+import { memoryDedupe } from "./dedupe.ts";
 import { discordPayload, slackPayload } from "./format.ts";
 import { eventToSale, tierFor } from "./sale.ts";
 import { verifyStripeSignature } from "./stripe.ts";
 import type { CustomerVisibility, DedupeStore, GongConfig, Sink } from "./types.ts";
-
-export function memoryDedupe(max = 5000): DedupeStore {
-  const seen = new Set<string>();
-  return {
-    has: (key) => seen.has(key),
-    add(key) {
-      seen.add(key);
-      if (seen.size > max) {
-        const oldest = seen.values().next().value;
-        if (oldest !== undefined) seen.delete(oldest);
-      }
-    },
-  };
-}
 
 async function postJson(fetchImpl: typeof fetch, url: string, body: unknown): Promise<void> {
   const res = await fetchImpl(url, {
@@ -34,6 +21,8 @@ export function discordSink(url: string, visibility: CustomerVisibility, fetchIm
 export function slackSink(url: string, visibility: CustomerVisibility, fetchImpl: typeof fetch): Sink {
   return (sale, tier) => postJson(fetchImpl, url, slackPayload(sale, tier, visibility));
 }
+
+export { memoryDedupe };
 
 export interface HandlerOptions {
   config: GongConfig;
@@ -80,7 +69,7 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
     const sale = eventToSale(event);
     if (!sale) return text(200, "ignored");
     if (sale.kind === "renewal" && !config.celebrateRenewals) return text(200, "ignored");
-    if (dedupe.has(sale.dedupeKey)) return text(200, "duplicate");
+    if (await dedupe.has(sale.dedupeKey)) return text(200, "duplicate");
     if (sinks.length === 0) return text(200, "no sinks configured");
 
     const tier = tierFor(sale.amountMinor, sale.currency, config);
@@ -90,7 +79,7 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
 
     // Only ask Stripe to retry if nobody heard the gong; otherwise a retry would double-post.
     if (failures.length === results.length) return text(500, "all sinks failed");
-    dedupe.add(sale.dedupeKey);
+    await dedupe.add(sale.dedupeKey);
     options.onCelebrated?.();
     return text(200, "gong");
   };
