@@ -1,0 +1,14 @@
+name: Bug
+description: Something is broken
+labels: [bug]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: What happened, description: What did you expect instead? }
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes: { label: Steps to reproduce, description: Include the Stripe event type if relevant. Never paste secrets or real customer data. }
+  - type: input
+    id: env
+    attributes: { label: Environment, placeholder: "Node 22 / Cloudflare Workers / macOS 26 app 0.1.0" }

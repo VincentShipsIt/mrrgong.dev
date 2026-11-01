@@ -1,0 +1,25 @@
+name: Task
+description: Planned engineering work
+labels: [task]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem }
+    validations: { required: true }
+  - type: textarea
+    id: ears
+    attributes: { label: EARS requirements, placeholder: "THE SYSTEM SHALL ..." }
+    validations: { required: true }
+  - type: textarea
+    id: components
+    attributes: { label: Affected components }
+  - type: textarea
+    id: notes
+    attributes: { label: Implementation notes, description: Include priority (P1/P2/P3). }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }
+    validations: { required: true }
+  - type: textarea
+    id: verification
+    attributes: { label: Verification plan }

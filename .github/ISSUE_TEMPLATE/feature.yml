@@ -1,0 +1,15 @@
+name: Feature
+description: Suggest something new
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes: { label: Problem, description: Who needs this and why? }
+    validations: { required: true }
+  - type: textarea
+    id: ears
+    attributes: { label: EARS requirements, placeholder: "WHEN a sale is celebrated, THE SYSTEM SHALL ..." }
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }
