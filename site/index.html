@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MRR Gong: strike a gong on every Stripe sale</title>
+<meta name="description" content="Open-source Stripe webhook that rings a gong in Discord, Slack, your menu bar and your browser on every sale. Tracks MRR and your day streak. MIT licensed.">
+<style>
+  :root { color-scheme: dark; --bg:#14110b; --tile:#251f14; --line:#3a3120; --fg:#fff4d6; --muted:#c9b98f; --gold:#f5b301; --ink:#2a2000; --green:#6fd08c; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 -apple-system,system-ui,"Segoe UI",sans-serif; }
+  a { color:var(--gold); }
+  .wrap { max-width:1040px; margin:0 auto; padding:0 16px; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:20px 0; }
+  .logo { display:flex; align-items:center; gap:8px; font-weight:800; color:var(--gold); text-decoration:none; }
+  nav a { margin-left:20px; color:var(--muted); text-decoration:none; font-size:15px; }
+  nav a:hover { color:var(--fg); }
+  .hero { text-align:center; padding:48px 0 32px; position:relative; }
+  h1 { font-size:clamp(2.2rem,7vw,4.4rem); line-height:1.05; margin:0 0 16px; letter-spacing:-.03em; }
+  h1 em { color:var(--gold); font-style:normal; }
+  .lead { color:var(--muted); max-width:640px; margin:0 auto 28px; font-size:1.15rem; }
+  #amount { font-size:clamp(3rem,13vw,7.5rem); font-weight:800; letter-spacing:-.04em; min-height:1.1em; }
+  #line { color:var(--muted); min-height:1.6em; margin-bottom:20px; }
+  button { font:inherit; font-weight:700; border:0; border-radius:999px; padding:.8em 1.7em; cursor:pointer; background:var(--gold); color:var(--ink); }
+  button:hover { filter:brightness(1.08); }
+  button:focus-visible, a:focus-visible, summary:focus-visible { outline:3px solid var(--fg); outline-offset:3px; }
+  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button[aria-pressed="true"] { background:var(--gold); color:var(--ink); border-color:var(--gold); }
+  .modes { display:flex; gap:8px; justify-content:center; margin:20px 0 0; flex-wrap:wrap; }
+  .shake { animation: shake .6s; }
+  @keyframes shake { 0%,100%{transform:none} 20%{transform:translateX(-10px) rotate(-1deg)} 40%{transform:translateX(8px) rotate(1deg)} 60%{transform:translateX(-5px)} 80%{transform:translateX(3px)} }
+  canvas { position:fixed; inset:0; pointer-events:none; z-index:5; }
+  section { padding:40px 0; }
+  h2 { font-size:clamp(1.5rem,4vw,2.2rem); margin:0 0 20px; letter-spacing:-.02em; }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); }
+  .tile { background:var(--tile); border-radius:20px; padding:20px; }
+  .tile h3 { margin:0 0 6px; font-size:1.05rem; }
+  .tile p { margin:0; color:var(--muted); font-size:.97rem; }
+  .step { font-weight:800; color:var(--gold); font-size:.85rem; letter-spacing:.1em; }
+  pre { background:#0e0c08; border:1px solid var(--line); border-radius:14px; padding:16px; overflow-x:auto; font-size:.9rem; line-height:1.5; margin:0; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .sample { background:var(--tile); border-radius:16px; padding:14px 16px; font-size:.98rem; margin-bottom:10px; }
+  .sample b { display:block; }
+  .sample span { color:var(--muted); }
+  ul.plain { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+  ul.plain li { padding-left:1.6em; position:relative; }
+  ul.plain li::before { content:""; position:absolute; left:0; top:.55em; width:.7em; height:.7em; border-radius:50%; background:var(--gold); }
+  footer { border-top:1px solid var(--line); padding:28px 0 48px; color:var(--muted); font-size:.92rem; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .sr { position:absolute; left:-9999px; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header>
+    <a class="logo" href="#top" id="top">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 003.4 0"/></svg>
+      mrrgong
+    </a>
+    <nav aria-label="Main"><a href="#how">How it works</a><a href="#modes">Modes</a><a href="#start">Quick start</a><a href="https://github.com/VincentShipsIt/mrrgong.dev">GitHub</a></nav>
+  </header>
+
+  <main>
+    <section class="hero" id="demo" aria-labelledby="h">
+      <h1 id="h">Strike a gong every time <em>Stripe</em> pays you.</h1>
+      <p class="lead">An open-source webhook that celebrates each sale in Discord, Slack, your Mac menu bar and a browser tab on the spare monitor. It also watches your MRR and counts how many days in a row it went up.</p>
+      <div id="stage"><div id="amount" aria-live="polite">$49.00</div><div id="line">Click the button. Turn your sound on.</div></div>
+      <button id="strike" type="button">Strike the gong</button>
+      <div class="modes" role="group" aria-label="Message mode">
+        <button class="ghost" type="button" data-mode="calm" aria-pressed="true">Calm</button>
+        <button class="ghost" type="button" data-mode="indie" aria-pressed="false">Indie hacker</button>
+        <button class="ghost" type="button" data-mode="broker" aria-pressed="false">Broker</button>
+      </div>
+    </section>
+
+    <section id="how" aria-labelledby="how-h">
+      <h2 id="how-h">How it works</h2>
+      <div class="grid">
+        <div class="tile"><span class="step">1</span><h3>Add a Stripe webhook</h3><p>Point it at your server and pick three events. Signatures are verified with Web Crypto, with no Stripe SDK.</p></div>
+        <div class="tile"><span class="step">2</span><h3>Paste your channel URLs</h3><p>A Discord or Slack webhook, an ntfy topic for your phone, and optionally X for milestones.</p></div>
+        <div class="tile"><span class="step">3</span><h3>Hear the gong</h3><p>Bigger sales ring louder. Retries never double-announce, and customer emails are masked by default.</p></div>
+      </div>
+    </section>
+
+    <section id="modes" aria-labelledby="modes-h">
+      <h2 id="modes-h">Funny where it should be</h2>
+      <div class="grid">
+        <div class="tile"><h3>Milestones</h3><p>First sale, the 100th sale, MRR crossing $1k, a 30-day streak. Each fires once, and they are the posts worth sharing.</p></div>
+        <div class="tile"><h3>Message modes</h3><p>Calm, indie hacker, or old-school broker, with 10+ lines per tier. Add your own in one file.</p></div>
+        <div class="tile"><h3>Sad gong</h3><p>Refunds and cancellations, in a muted tone and in private channels only. Off by default.</p></div>
+        <div class="tile"><h3>AI one-liners</h3><p>Optional. The model sees the amount and the size of the sale. It never sees a customer.</p></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="honest-h">
+      <h2 id="honest-h">Honest by design</h2>
+      <ul class="plain">
+        <li>MRR is computed from your active subscriptions with a restricted, read-only Stripe key. The day streak counts real days where it went up, and a dip breaks it.</li>
+        <li>Zero runtime dependencies. One handler that runs on Cloudflare Workers, Node, Docker, Bun and Deno.</li>
+        <li>Customer-controlled text can never ping @everyone or inject Slack links, and public posts never contain customer data.</li>
+        <li>MIT licensed. Self-hosted, so your revenue numbers stay yours.</li>
+      </ul>
+    </section>
+
+    <section id="start" aria-labelledby="start-h">
+      <h2 id="start-h">Quick start</h2>
+<pre><code>git clone https://github.com/VincentShipsIt/mrrgong.dev
+cd mrrgong.dev &amp;&amp; npm install
+npx wrangler secret put STRIPE_WEBHOOK_SECRET
+npx wrangler secret put DISCORD_WEBHOOK_URL
+npx wrangler deploy
+
+# or run it locally and hear it
+cp .env.example .env &amp;&amp; npm run dev
+npm run simulate 49</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>MRR Gong is MIT licensed and not affiliated with Stripe.</span>
+    <a href="https://github.com/VincentShipsIt/mrrgong.dev">Source on GitHub</a>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const LINES = {
+    calm: ["Another sale rings in.", "Stripe says yes.", "Money in the bank."],
+    indie: ["MRR go brrr.", "A stranger on the internet just paid you.", "Tell your mom. Then tell the group chat.", "Not a bug, a customer.", "Pricing page: validated."],
+    broker: ["Sold.", "The phones are ringing.", "Always be closing.", "Whale on the hook.", "Put it on the board."],
+  };
+  const AMOUNTS = [["$9.00", 1], ["$49.00", 1], ["$129.00", 2], ["$240.00", 2], ["$2,500.00", 3]];
+  let mode = "calm", ctx = null, last = -1;
+
+  function gong(strikes) {
+    if (!ctx) return;
+    const base = strikes === 3 ? 70 : strikes === 2 ? 82 : 98;
+    for (let n = 0; n < strikes; n++) {
+      const t0 = ctx.currentTime + n * 0.7, master = ctx.createGain();
+      master.gain.value = 0.45; master.connect(ctx.destination);
+      // Inharmonic partials are what make a gong a gong rather than a bell.
+      [[1,1],[1.51,.7],[2.03,.55],[2.64,.45],[3.28,.3],[4.7,.2],[6.1,.12]].forEach(([r, g]) => {
+        const o = ctx.createOscillator(), e = ctx.createGain();
+        o.frequency.value = base * r;
+        e.gain.setValueAtTime(0, t0);
+        e.gain.linearRampToValueAtTime(g * 0.4, t0 + 0.01);
+        e.gain.exponentialRampToValueAtTime(0.0001, t0 + (strikes === 3 ? 7 : 4.5) / Math.sqrt(r));
+        o.connect(e); e.connect(master); o.start(t0); o.stop(t0 + 8);
+      });
+    }
+  }
+
+  const cv = $("#c"), g = cv.getContext("2d"); let bits = [];
+  const resize = () => { cv.width = innerWidth; cv.height = innerHeight; };
+  addEventListener("resize", resize); resize();
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function confetti(n) {
+    if (reduced) return;
+    for (let i = 0; i < n; i++) bits.push({ x: Math.random() * cv.width, y: -20, vx: (Math.random() - .5) * 4, vy: 2 + Math.random() * 5, s: 5 + Math.random() * 7, c: `hsl(${30 + Math.random() * 30},100%,${50 + Math.random() * 20}%)`, r: Math.random() * 6 });
+    if (bits.length === n) requestAnimationFrame(tick);
+  }
+  function tick() {
+    g.clearRect(0, 0, cv.width, cv.height);
+    bits = bits.filter((b) => b.y < cv.height + 20);
+    for (const b of bits) { b.x += b.vx; b.y += b.vy; b.r += .1; g.fillStyle = b.c; g.save(); g.translate(b.x, b.y); g.rotate(b.r); g.fillRect(-b.s / 2, -b.s / 4, b.s, b.s / 2); g.restore(); }
+    if (bits.length) requestAnimationFrame(tick);
+  }
+
+  $("#strike").addEventListener("click", () => {
+    ctx ??= new (window.AudioContext || window.webkitAudioContext)();
+    let i; do { i = Math.floor(Math.random() * AMOUNTS.length); } while (i === last);
+    last = i;
+    const [amount, strikes] = AMOUNTS[i], pool = LINES[mode];
+    $("#amount").textContent = amount;
+    $("#line").textContent = pool[Math.floor(Math.random() * pool.length)];
+    if (!reduced) { const s = $("#stage"); s.classList.remove("shake"); void s.offsetWidth; s.classList.add("shake"); }
+    gong(strikes);
+    confetti(strikes * 90);
+  });
+  document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll("[data-mode]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  }));
+})();
+</script>
+</body>
+</html>
