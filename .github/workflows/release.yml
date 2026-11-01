@@ -1,0 +1,248 @@
+# Release pipeline for the macOS menu bar app (apps/mac).
+#
+# Trigger: push a tag vMAJOR.MINOR.PATCH on a commit that is on main. The tag
+# must equal the "version" in package.json (bump it first, merge, then tag).
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# What it does: validate the tag, run the Swift tests, build MRRGong.app, sign
+# with a Developer ID certificate, notarize and staple (when the signing secrets
+# exist), zip with ditto, write a sha256, and publish a GitHub release with
+# auto-generated notes. It also uploads a filled Homebrew cask as a release asset.
+#
+# OWNER STEPS (repository Settings > Secrets and variables > Actions):
+#
+#   Signing and notarization, all five or none (without them the release is an
+#   unsigned ad-hoc build and the notes say so):
+#     MACOS_CERT_P12_BASE64  "Developer ID Application" certificate with its
+#                            private key exported as .p12, then: base64 -i cert.p12 | pbcopy
+#     MACOS_CERT_PASSWORD    the password chosen when exporting the .p12
+#     APPLE_ID               Apple ID email of the developer account
+#     APPLE_TEAM_ID          10-character team ID
+#     APPLE_APP_PASSWORD     app-specific password for that Apple ID
+#                            (appleid.apple.com > Sign-In and Security)
+#
+#   Homebrew (optional, signed builds only):
+#     HOMEBREW_TAP_TOKEN     fine-grained token with contents and pull requests
+#                            write on VincentShipsIt/homebrew-tap. Without it the
+#                            filled cask (mrr-gong.rb) is only a release asset.
+#
+# Optional hardening: create a "release" environment with required reviewers and
+# move the secrets there; add `environment: release` to the build job.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write # create the release and upload assets
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      signed: ${{ steps.mode.outputs.signed }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - name: Choose signing keychain path
+        run: echo "KEYCHAIN_PATH=$RUNNER_TEMP/mrrgong-signing.keychain-db" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release tag
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="$(apps/mac/scripts/validate-release-tag.sh "$REF_NAME")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Accidental-release guard: only commits that are on main can be released.
+      - name: Require release commit on main
+        env:
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$RELEASE_COMMIT" refs/remotes/origin/main \
+            || { echo "::error::$RELEASE_COMMIT is not on main"; exit 1; }
+
+      - name: Detect signing credentials
+        id: mode
+        env:
+          HAVE_CERT: ${{ secrets.MACOS_CERT_P12_BASE64 != '' }}
+          HAVE_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD != '' }}
+          HAVE_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+          HAVE_TEAM: ${{ secrets.APPLE_TEAM_ID != '' }}
+          HAVE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAVE_CERT" = true ] && [ "$HAVE_CERT_PASSWORD" = true ] && [ "$HAVE_APPLE_ID" = true ] \
+              && [ "$HAVE_TEAM" = true ] && [ "$HAVE_APP_PASSWORD" = true ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Signing secrets missing: building an unsigned (ad-hoc) release."
+          fi
+
+      - name: Test
+        working-directory: apps/mac
+        run: swift test
+
+      - name: Create temporary signing keychain
+        id: keychain
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          identity="$(apps/mac/scripts/ci-keychain.sh create "$KEYCHAIN_PATH")"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
+      - name: Build app (Developer ID, hardened runtime)
+        if: steps.mode.outputs.signed == 'true'
+        working-directory: apps/mac
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN_IDENTITY: ${{ steps.keychain.outputs.identity }}
+          KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
+        run: ./scripts/build-app.sh
+
+      - name: Build app (unsigned, ad-hoc)
+        if: steps.mode.outputs.signed != 'true'
+        working-directory: apps/mac
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/build-app.sh
+
+      - name: Check bundle version matches the tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: apps/mac/scripts/validate-release-tag.sh "$REF_NAME" --app apps/mac/dist/MRRGong.app
+
+      - name: Notarize and staple
+        if: steps.mode.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: apps/mac/scripts/notarize.sh apps/mac/dist/MRRGong.app
+
+      - name: Package
+        id: package
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          zip="release/MRRGong-${TAG}.zip"
+          ditto -c -k --keepParent apps/mac/dist/MRRGong.app "$zip"
+          sha256="$(shasum -a 256 "$zip" | cut -d ' ' -f 1)"
+          # Same layout as `shasum`, so `shasum -c` works next to the zip.
+          printf '%s  %s\n' "$sha256" "$(basename "$zip")" > "$zip.sha256"
+          apps/mac/scripts/render-cask.sh "$VERSION" "$sha256" release/mrr-gong.rb
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          ls -l release
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          SIGNED: ${{ steps.mode.outputs.signed }}
+        run: |
+          set -euo pipefail
+          if [ "$SIGNED" = true ]; then
+            note="Signed with Developer ID and notarized by Apple."
+          else
+            note="**Unsigned build: right-click, Open.** This release is not signed or notarized. On first launch, right-click MRRGong.app and choose Open (macOS blocks a double-click)."
+          fi
+          assets=("release/MRRGong-${TAG}.zip" "release/MRRGong-${TAG}.zip.sha256" release/mrr-gong.rb)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Re-run of a failed release: replace assets, keep the existing notes.
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --verify-tag --title "MRR Gong $TAG" --generate-notes --notes "$note"
+          fi
+
+      # Always runs, so the certificate never outlives the job.
+      - name: Delete signing keychain
+        if: always()
+        run: apps/mac/scripts/ci-keychain.sh delete "${KEYCHAIN_PATH:-$RUNNER_TEMP/mrrgong-signing.keychain-db}"
+
+  # Proposes the cask to the tap as a pull request. Only for signed, notarized
+  # builds (Gatekeeper would block an unsigned app installed by Homebrew) and only
+  # when HOMEBREW_TAP_TOKEN exists. Runs on Linux, the token stays out of the build job.
+  homebrew:
+    needs: build
+    if: needs.build.outputs.signed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      HAVE_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+    steps:
+      - name: Skip notice
+        if: env.HAVE_TAP_TOKEN != 'true'
+        run: echo "::notice::HOMEBREW_TAP_TOKEN is not set; the cask is only attached to the release."
+
+      - uses: actions/checkout@v7
+        if: env.HAVE_TAP_TOKEN == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Open tap pull request
+        if: env.HAVE_TAP_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          RELEASE_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Public release asset: the same checksum the cask must carry.
+          sha256="$(GH_TOKEN="$RELEASE_TOKEN" gh release download "$TAG" --repo "$REPO" \
+            --pattern "MRRGong-${TAG}.zip.sha256" --output - | cut -d ' ' -f 1)"
+          [[ "$sha256" =~ ^[0-9a-f]{64}$ ]] || { echo "::error::Bad sha256 asset"; exit 1; }
+
+          tap=VincentShipsIt/homebrew-tap
+          gh auth setup-git
+          gh repo clone "$tap" tap-checkout
+          base="$(gh repo view "$tap" --json defaultBranchRef --jq .defaultBranchRef.name)"
+          branch="mrr-gong-${TAG}"
+          git -C tap-checkout checkout -b "$branch"
+          apps/mac/scripts/render-cask.sh "$VERSION" "$sha256" tap-checkout/Casks/mrr-gong.rb
+          cd tap-checkout
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/mrr-gong.rb
+          if git diff --staged --quiet; then
+            echo "Cask already up to date."
+            exit 0
+          fi
+          git commit -m "Update mrr-gong to ${TAG}"
+          git push --force-with-lease origin "$branch"
+          gh pr create --repo "$tap" --head "$branch" --base "$base" \
+            --title "Update mrr-gong to ${TAG}" \
+            --body "Automated update from https://github.com/${REPO}/releases/tag/${TAG}" \
+            || echo "A pull request for $branch already exists."
