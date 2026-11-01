@@ -2,10 +2,12 @@ import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { customerLabel } from "./format.ts";
 import { GONG_PAGE } from "./gongPage.ts";
-import { createHandler, memoryDedupe } from "./handler.ts";
+import { createGong } from "./handler.ts";
 import { createMrrWatcher, type MrrWatcher } from "./mrrWatcher.ts";
 import { formatAmount } from "./sale.ts";
+import { fileState } from "./fileState.ts";
 import type { GongConfig, Sink } from "./types.ts";
+import { createWriter } from "./writer.ts";
 
 export interface ServerOptions {
   config: GongConfig;
@@ -14,6 +16,8 @@ export interface ServerOptions {
   fetch?: typeof fetch;
   /** Where the daily MRR snapshots live (Node only). */
   historyFile?: string;
+  /** Dedupe keys and milestone counters (Node only). */
+  stateFile?: string;
   now?: () => Date;
   log?: (message: string) => void;
 }
@@ -40,20 +44,39 @@ export function createGongServer(options: ServerOptions): Server {
   const { config, token, log = () => {} } = options;
   const clients = new Set<ServerResponse>();
 
-  const browserSink: Sink = async (sale, tier) => {
-    broadcast(null, {
-      amount: formatAmount(sale.amountMinor, sale.currency),
-      tier,
-      kind: sale.kind,
-      label: customerLabel(sale, config.customer),
-    });
-  };
-
   const broadcast = (event: string | null, payload: unknown) => {
     for (const res of clients) res.write(`${event ? `event: ${event}\n` : ""}data: ${JSON.stringify(payload)}\n\n`);
   };
 
+  // Unnamed messages are sales (the Mac app and gong page already parse these). Milestones get
+  // their own event name so older clients ignore them instead of failing to decode.
+  const browserSink: Sink = async (event) => {
+    if (event.type === "sale") {
+      broadcast(null, {
+        amount: formatAmount(event.sale.amountMinor, event.sale.currency),
+        tier: event.tier,
+        kind: event.sale.kind,
+        label: customerLabel(event.sale, config.customer),
+      });
+    } else if (event.type === "milestone") {
+      broadcast("milestone", { text: event.milestone.text, tier: "huge", label: event.message.body });
+    }
+  };
+
+  const stateFile = options.stateFile ?? "mrrgong-state.json";
   let watcher: MrrWatcher | undefined;
+  const gong = createGong({
+    config,
+    fetch: options.fetch,
+    state: fileState(stateFile),
+    extraSinks: [browserSink],
+    writer: config.anthropicApiKey
+      ? createWriter({ apiKey: config.anthropicApiKey, model: config.aiModel, fetch: options.fetch })
+      : undefined,
+    onCelebrated: () => void watcher?.refresh(),
+    log,
+  });
+
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   if (config.stripeApiKey) {
     watcher = createMrrWatcher({
@@ -63,21 +86,17 @@ export function createGongServer(options: ServerOptions): Server {
       fetch: options.fetch,
       now: options.now,
       log,
-      onUpdate: (summary) => broadcast("mrr", summary),
+      onUpdate: (summary) => {
+        broadcast("mrr", summary);
+        void gong.onMrr(summary);
+      },
     });
     void watcher.refresh();
     pollTimer = setInterval(() => void watcher?.refresh(), config.mrrPollMinutes * 60_000);
     pollTimer.unref();
   }
 
-  const handle = createHandler({
-    config,
-    fetch: options.fetch,
-    dedupe: memoryDedupe(),
-    extraSinks: [browserSink],
-    onCelebrated: () => void watcher?.refresh(),
-    log,
-  });
+  const handle = gong.handle;
 
   const authorised = (url: URL) => !token || safeEqual(url.searchParams.get("token") ?? "", token);
 

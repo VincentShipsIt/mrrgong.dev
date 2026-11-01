@@ -6,3 +6,5 @@ coverage
 .agents/sessions
 mrr-history.json
 mrr-history.json.tmp
+mrrgong-state.json
+mrrgong-state.json.tmp

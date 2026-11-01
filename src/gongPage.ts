@@ -17,6 +17,7 @@ export const GONG_PAGE = `<!doctype html>
   main { position:relative; z-index:1; padding:16px; }
   h1 { font-size:clamp(2rem,8vw,5rem); margin:.2em 0; color:var(--gold); }
   #amount { font-size:clamp(3rem,14vw,10rem); font-weight:800; min-height:1.1em; }
+  #amount.long { font-size:clamp(1.8rem,6vw,4.2rem); line-height:1.15; padding:0 .5em; }
   #who { opacity:.8; min-height:1.4em; }
   button { font:inherit; font-weight:700; padding:.8em 1.6em; border-radius:999px; border:0;
            background:var(--gold); color:#2a2000; cursor:pointer; margin:.4em; }
@@ -70,6 +71,7 @@ export const GONG_PAGE = `<!doctype html>
   }
 
   function celebrate(sale) {
+    $("amount").classList.toggle("long", sale.amount.length > 12);
     $("amount").textContent = sale.amount;
     $("who").textContent = sale.label || "";
     document.title = sale.amount + " 🔔 MRR Gong";
@@ -90,5 +92,9 @@ export const GONG_PAGE = `<!doctype html>
   es.onopen = () => { $("status").textContent = "listening for sales"; };
   es.onerror = () => { $("status").textContent = "reconnecting…"; };
   es.onmessage = (e) => { try { celebrate(JSON.parse(e.data)); } catch {} };
+  // Milestones arrive as a named event so older clients can ignore them.
+  es.addEventListener("milestone", (e) => {
+    try { const m = JSON.parse(e.data); celebrate({ amount: m.text, tier: "huge", label: m.label }); } catch {}
+  });
 })();
 </script></body></html>`;

@@ -54,6 +54,33 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, MRR_POLL_MINUTES: "0" })).toThrow(/MRR_POLL_MINUTES/);
   });
 
+  it("parses mode, sad and milestone flags", () => {
+    expect(loadConfig(base)).toMatchObject({ mode: "calm", sad: false, milestones: true });
+    expect(loadConfig({ ...base, GONG_MODE: "Indie", GONG_SAD: "true", GONG_MILESTONES: "off" })).toMatchObject({ mode: "indie", sad: true, milestones: false });
+    expect(() => loadConfig({ ...base, GONG_MODE: "wolf" })).toThrow(/GONG_MODE/);
+    expect(() => loadConfig({ ...base, GONG_SAD: "maybe" })).toThrow(/GONG_SAD/);
+  });
+
+  it("parses ntfy and validates it", () => {
+    expect(loadConfig(base)).toMatchObject({ ntfyTopic: undefined, ntfyServer: "https://ntfy.sh" });
+    expect(loadConfig({ ...base, NTFY_TOPIC: "my-gong_1", NTFY_SERVER: "https://ntfy.example.com" })).toMatchObject({ ntfyTopic: "my-gong_1", ntfyServer: "https://ntfy.example.com" });
+    expect(() => loadConfig({ ...base, NTFY_SERVER: "http://ntfy.sh" })).toThrow(/NTFY_SERVER/);
+    expect(() => loadConfig({ ...base, NTFY_SERVER: "nope" })).toThrow(/NTFY_SERVER/);
+    expect(() => loadConfig({ ...base, NTFY_TOPIC: "../etc/passwd" })).toThrow(/NTFY_TOPIC/);
+  });
+
+  it("requires all four X credentials or none", () => {
+    const x = { X_API_KEY: "a", X_API_SECRET: "b", X_ACCESS_TOKEN: "c", X_ACCESS_SECRET: "d" };
+    expect(loadConfig(base).x).toBeUndefined();
+    expect(loadConfig({ ...base, ...x, X_POST_ALL_OVER: "250" })).toMatchObject({ x: { apiKey: "a", apiSecret: "b", accessToken: "c", accessSecret: "d" }, xPostAllOver: 250 });
+    expect(() => loadConfig({ ...base, X_API_KEY: "a" })).toThrow(/X_API_SECRET/);
+  });
+
+  it("parses the optional AI writer settings", () => {
+    expect(loadConfig(base)).toMatchObject({ anthropicApiKey: undefined, aiModel: "claude-haiku-5-5" });
+    expect(loadConfig({ ...base, ANTHROPIC_API_KEY: "sk-ant-x", GONG_AI_MODEL: "claude-sonnet-5-5" })).toMatchObject({ anthropicApiKey: "sk-ant-x", aiModel: "claude-sonnet-5-5" });
+  });
+
   it("treats empty strings as unset", () => {
     const c = loadConfig({ ...base, SLACK_WEBHOOK_URL: "", GONG_BIG_AT: "" });
     expect(c.slackWebhookUrl).toBeUndefined();

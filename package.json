@@ -4,17 +4,27 @@
   "description": "Strike a gong in Discord, Slack and your browser every time Stripe gets you a sale.",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/handler.js",
-  "bin": { "mrrgong": "dist/cli.js" },
-  "files": ["dist", "README.md", "LICENSE"],
+  "bin": {
+    "mrrgong": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --coverage",
     "start": "node dist/cli.js",
     "dev": "node --env-file-if-exists=.env src/cli.ts",
-    "simulate": "node --env-file-if-exists=.env src/simulate.ts"
+    "simulate": "node --env-file-if-exists=.env src/simulate.ts",
+    "deploy": "wrangler deploy",
+    "site": "node --input-type=module -e \"import('node:http').then(({createServer})=>import('node:fs/promises').then(({readFile})=>createServer(async(_,r)=>r.end(await readFile('site/index.html'))).listen(8788,()=>console.log('http://localhost:8788'))))\""
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

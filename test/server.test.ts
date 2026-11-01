@@ -1,4 +1,7 @@
 import { createHmac } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config.ts";
@@ -10,7 +13,8 @@ const servers: ReturnType<typeof createGongServer>[] = [];
 async function start(token?: string) {
   const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
   const server = createGongServer({
-    config: loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1/a" }),
+    config: loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/1/a", GONG_MILESTONES: "false" }),
+    stateFile: join(mkdtempSync(join(tmpdir(), "gong-")), "state.json"),
     token,
     fetch: fetchMock as unknown as typeof fetch,
   });
@@ -61,6 +65,11 @@ describe("server", () => {
     expect(await res.text()).toContain("MRR Gong");
   });
 
+  it("serves a page that listens for milestone events", async () => {
+    const { base } = await start();
+    expect(await (await fetch(`${base}/gong`)).text()).toContain('addEventListener("milestone"');
+  });
+
   it("pushes sales to browsers over SSE", async () => {
     const { base } = await start();
     const events = await fetch(`${base}/events`);
@@ -91,5 +100,26 @@ describe("server", () => {
     const { base } = await start();
     const res = await fetch(`${base}/webhook`, { method: "POST", body: "x".repeat(1_100_000) });
     expect(res.status).toBe(413);
+  });
+
+  it("pushes a first-sale milestone as a named SSE event after the sale", async () => {
+    const server = createGongServer({
+      config: loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, GONG_MILESTONES: "true" }),
+      stateFile: join(mkdtempSync(join(tmpdir(), "gong-")), "state.json"),
+    });
+    await new Promise<void>((r) => server.listen(0, r));
+    servers.push(server);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const events = await fetch(`${base}/events`);
+    const reader = events.body!.getReader();
+    const decoder = new TextDecoder();
+    await reader.read();
+    const { body, headers } = signedSale("9", 49);
+    await fetch(`${base}/webhook`, { method: "POST", headers, body });
+    let text = "";
+    while (!text.includes("event: milestone")) text += decoder.decode((await reader.read()).value);
+    expect(text).toContain('"amount":"$49.00"');
+    expect(text).toMatch(/event: milestone\ndata: \{"text":"First sale ever\. Someone paid for your thing\."/);
+    await reader.cancel();
   });
 });
