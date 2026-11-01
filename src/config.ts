@@ -1,3 +1,4 @@
+import { DEFAULT_MRR_MILESTONES, DEFAULT_SALE_MILESTONES, parseThresholds } from "./milestones.ts";
 import type { CustomerVisibility, GongConfig } from "./types.ts";
 
 export type Env = Record<string, string | undefined>;
@@ -53,6 +54,9 @@ export function loadConfig(env: Env): GongConfig {
     stripeApiKey,
     mrrGoal,
     mrrPollMinutes,
+    mrrMilestones: parseThresholds(env.GONG_MRR_MILESTONES, "GONG_MRR_MILESTONES", DEFAULT_MRR_MILESTONES),
+    saleMilestones: parseThresholds(env.GONG_SALE_MILESTONES, "GONG_SALE_MILESTONES", DEFAULT_SALE_MILESTONES),
+    salesSoFar: Math.floor(num(env, "GONG_SALES_SO_FAR", 0)),
     discordWebhookUrl: webhookUrl(env, "DISCORD_WEBHOOK_URL", (h) => DISCORD_HOSTS.has(h)),
     slackWebhookUrl: webhookUrl(env, "SLACK_WEBHOOK_URL", (h) => h === "hooks.slack.com"),
     bigAt,

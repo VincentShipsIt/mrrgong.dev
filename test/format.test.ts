@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customerLabel, discordPayload, headline, maskEmail, slackPayload } from "../src/format.ts";
+import { customerLabel, discordMilestonePayload, discordPayload, headline, maskEmail, slackMilestonePayload, slackPayload } from "../src/format.ts";
 import type { Sale } from "../src/types.ts";
 
 const sale = (over: Partial<Sale> = {}): Sale => ({
@@ -106,5 +106,20 @@ describe("sad gong", () => {
     const p = slackPayload({ ...refund, customerName: "<!channel>" }, "normal", "masked");
     expect(p.blocks[0]?.text.text).toContain("&lt;!channel&gt;");
     expect(p.text).toBe("😔 $11.00 refunded");
+  });
+});
+
+describe("milestone payloads", () => {
+  const m = { kind: "mrr" as const, title: "🎉 MRR crossed $500.00!" };
+  it("is a loud pink Discord embed that never pings anyone", () => {
+    const p = discordMilestonePayload(m);
+    expect(p.embeds[0]?.title).toBe("🔔🔔🔔 🎉 MRR crossed $500.00!");
+    expect(p.embeds[0]?.color).toBe(0xe5226a);
+    expect(p.allowed_mentions).toEqual({ parse: [] });
+  });
+  it("is plain Slack text, escaped", () => {
+    const p = slackMilestonePayload({ kind: "sales", title: "<!channel> 10th sale" });
+    expect(p.blocks[0]?.text.text).toContain("&lt;!channel&gt;");
+    expect(p.blocks[0]?.text.text).not.toContain("<!channel>");
   });
 });

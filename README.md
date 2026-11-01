@@ -12,6 +12,7 @@ Stripe webhook → a loud, celebratory message in **Discord** and **Slack**, plu
 
 - **Tiny**: zero runtime dependencies. No Stripe SDK; signatures are verified with Web Crypto.
 - **Runs anywhere**: one `Request → Response` handler. Cloudflare Workers, Node, Docker, Bun, Deno.
+- **Milestone gongs**: your first sale, your 10th, 100th, 1,000th, and MRR crossing $100, $500, $1k, $5k, $10k, each announced once with the full ceremony.
 - **Doesn't double-celebrate**: handles Stripe retries, and the checkout/invoice overlap for subscriptions.
 - **Safe by default**: customer emails are masked, customer-controlled text can't `@everyone` or inject Slack links, replayed webhooks are rejected.
 
@@ -44,6 +45,8 @@ Open `http://localhost:8787/gong`, click **arm the gong** (browsers require a cl
 ```sh
 npm run simulate 49      # signed fake $49 sale to localhost:8787
 npm run simulate 2500    # hear the big one
+npm run simulate -- --mrr 5000   # preview "MRR crossed $5,000" in every channel
+npm run simulate -- --sales 100  # preview "100th sale"
 stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.session.completed
 ```
 
@@ -57,12 +60,24 @@ stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.ses
 | `GONG_BIG_AT` / `GONG_HUGE_AT` | `100` / `1000` | Major units (dollars, not cents) for the louder tiers. Not currency-converted. |
 | `GONG_RENEWALS` | `true` | Set `false` to celebrate only new customers |
 | `GONG_SAD` | `false` | Set `true` to log refunds and cancellations quietly (muted message, grey embed, no gong). They never reach public channels like X |
+| `GONG_SALE_MILESTONES` | `1,10,100,1000` | Sale counts that get a milestone gong; `none` turns them off |
+| `GONG_MRR_MILESTONES` | `100,500,1000,5000,10000` | MRR thresholds in major units (needs `STRIPE_API_KEY`); `none` turns them off |
+| `GONG_SALES_SO_FAR` | `0` | Sales you had before installing mrrgong, so an existing shop doesn't announce a "first sale" |
 | `GONG_CUSTOMER` | `masked` | `full`, `masked` (name, or `a**@domain.com`), or `none` |
 | `STRIPE_API_KEY` | – | Restricted read-only key (`rk_…`). Turns on the MRR watcher |
 | `MRR_GOAL`, `MRR_POLL_MINUTES` | –, `15` | Goal in major units; poll interval |
 | `PORT`, `GONG_TOKEN` | `8787`, – | Node server only. The token also protects `/mrr` |
 
 Test-mode events are labelled `[TEST]`.
+
+## Milestones
+
+Milestones fire once, ever, and are remembered across restarts. The Node server keeps them in `milestones.json` next to its other state (set a data dir, as for dedupe; without one they reset on restart). If several thresholds are passed at once only the highest is announced. The first MRR reading after a fresh install is recorded silently, so installing mrrgong on a $2k business doesn't celebrate $100, $500 and $1k.
+
+- Only live-mode sales count, and refunds and cancellations never do. Test-mode Stripe keys are not tracked for MRR.
+- Milestones go to every channel (Discord, Slack, the browser gong). They contain only amounts and counts, never customer details.
+- **Workers:** sale milestones work when the `DEDUPE` KV namespace is bound (the count lives there; KV is eventually consistent, so under a race a milestone can in rare cases be missed or repeated once). Without KV they are off. MRR milestones need the Node server, since Workers have no MRR watcher.
+- Rehearse with `npm run simulate -- --mrr 5000` or `-- --sales 100`: previews are signed, test-mode only, and never touch the real counters.
 
 ## MRR watcher and day streak (Node server)
 

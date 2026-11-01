@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config.ts";
 import { createHandler, memoryDedupe } from "../src/handler.ts";
+import { createMilestoneTracker, memoryMilestoneStore, type MilestoneTracker } from "../src/milestones.ts";
 import type { Sink } from "../src/types.ts";
 
 const SECRET = "whsec_test";
@@ -195,5 +196,81 @@ describe("handler", () => {
       expect(await (await handle(signed(refundEvent()))).text()).toBe("no sinks configured");
       expect(publicSink).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("milestones in the handler", () => {
+  const withTracker = (envOver: Record<string, string> = {}, tracker?: MilestoneTracker) => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(null, { status: 204 }));
+    const config = loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, DISCORD_WEBHOOK_URL: DISCORD, SLACK_WEBHOOK_URL: SLACK, ...envOver });
+    const milestones = tracker ?? createMilestoneTracker(memoryMilestoneStore(), { mrr: [], sales: config.saleMilestones, initialSales: config.salesSoFar });
+    const handle = createHandler({ config, fetch: fetchMock as unknown as typeof fetch, dedupe: memoryDedupe(), milestones });
+    const titles = () =>
+      fetchMock.mock.calls
+        .filter((c) => c[0] === DISCORD)
+        .map((c) => JSON.parse(String(c[1]?.body)).embeds?.[0]?.title as string);
+    return { handle, fetchMock, titles };
+  };
+  const sale = (n: number, over: Record<string, unknown> = {}) => event({ id: `cs_${n}`, payment_intent: `pi_${n}`, ...over });
+  const evt = (id: string, type: string, livemode: boolean, object: unknown) =>
+    JSON.stringify({ id, type, created: Math.floor(Date.now() / 1000), livemode, data: { object } });
+
+  it("announces the first sale and then the 10th, to every channel", async () => {
+    const { handle, titles, fetchMock } = withTracker();
+    for (let n = 1; n <= 10; n++) await handle(signed(JSON.stringify({ ...JSON.parse(sale(n)), id: `evt_${n}` })));
+    expect(titles().filter((t) => t.startsWith("🔔🔔🔔 🎉"))).toEqual(["🔔🔔🔔 🎉 First sale!", "🔔🔔🔔 🎉 10th sale!"]);
+    expect(fetchMock.mock.calls.filter((c) => c[0] === SLACK)).toHaveLength(12);
+  });
+
+  it("counts only live-mode sales", async () => {
+    const { handle, titles } = withTracker();
+    await handle(signed(JSON.stringify({ ...JSON.parse(sale(1)), livemode: false })));
+    expect(titles().some((t) => t.includes("First sale"))).toBe(false);
+  });
+
+  it("does not count refunds as sales", async () => {
+    const { handle, titles } = withTracker({ GONG_SAD: "true" });
+    await handle(signed(evt("evt_r", "charge.refunded", true, { id: "ch_1", object: "charge", amount_refunded: 1100, currency: "usd", payment_intent: "pi_x", refunds: { data: [{ id: "re_1", amount: 1100 }] } })));
+    expect(titles().some((t) => t.includes("First sale"))).toBe(false);
+  });
+
+  it("honours GONG_SALES_SO_FAR so an existing shop does not announce a first sale", async () => {
+    const { handle, titles } = withTracker({ GONG_SALES_SO_FAR: "9" });
+    await handle(signed(sale(1)));
+    expect(titles().filter((t) => t.startsWith("🔔🔔🔔 🎉"))).toEqual(["🔔🔔🔔 🎉 10th sale!"]);
+  });
+
+  it("still gongs the sale when announcing a milestone fails, and when the store is broken", async () => {
+    const broken = createMilestoneTracker(
+      { load: async () => { throw new Error("disk full"); }, save: async () => {} },
+      { mrr: [], sales: [1], initialSales: 0 },
+    );
+    const { handle } = withTracker({}, broken);
+    expect((await handle(signed(sale(1)))).status).toBe(200);
+
+    const f = vi.fn(async (url: string | URL | Request) => (String(url) === SLACK ? new Response("nope", { status: 500 }) : new Response(null, { status: 204 })));
+    const config = loadConfig({ STRIPE_WEBHOOK_SECRET: SECRET, DISCORD_WEBHOOK_URL: DISCORD, SLACK_WEBHOOK_URL: SLACK });
+    const h = createHandler({
+      config, fetch: f as unknown as typeof fetch, dedupe: memoryDedupe(), log: () => {},
+      milestones: createMilestoneTracker(memoryMilestoneStore(), { mrr: [], sales: [1], initialSales: 0 }),
+    });
+    expect((await h(signed(sale(2)))).status).toBe(200);
+    expect(f.mock.calls.filter((c) => c[0] === DISCORD)).toHaveLength(2);
+  });
+
+  it("previews an MRR milestone from a signed simulated test event, without touching the counters", async () => {
+    const { handle, titles } = withTracker();
+    const res = await handle(signed(evt("evt_sim", "mrrgong.simulate.milestone", false, { kind: "mrr", amount: 5000, currency: "usd" })));
+    expect(res.status).toBe(200);
+    expect(titles()).toEqual(["🔔🔔🔔 🎉 MRR crossed $5,000.00!"]);
+    await handle(signed(sale(1)));
+    expect(titles().filter((t) => t.includes("First sale"))).toHaveLength(1);
+  });
+
+  it("ignores a live-mode simulate event and a bad signature", async () => {
+    const { handle, fetchMock } = withTracker();
+    await handle(signed(evt("evt_sim2", "mrrgong.simulate.milestone", true, { kind: "sales", count: 100 })));
+    await handle(signed(evt("evt_sim3", "mrrgong.simulate.milestone", false, { kind: "sales", count: 100 }), "whsec_wrong"));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,14 @@ export type SaleKind = "one_time" | "new_subscription" | "renewal" | "refund" | 
 export const SAD_KINDS: ReadonlySet<SaleKind> = new Set<SaleKind>(["refund", "cancellation"]);
 export type Tier = "normal" | "big" | "huge";
 
+export type MilestoneKind = "first_sale" | "sales" | "mrr";
+
+/** Public-safe by construction: a title and nothing about any customer. */
+export interface Milestone {
+  kind: MilestoneKind;
+  title: string;
+}
+
 export interface Sale {
   /** Stable key used to avoid celebrating the same payment twice. */
   dedupeKey: string;
@@ -37,6 +45,12 @@ export interface GongConfig {
   /** Major units. Shows "% left" towards this MRR goal. */
   mrrGoal?: number;
   mrrPollMinutes: number;
+  /** Major units. Crossing one for the first time announces a milestone. */
+  mrrMilestones: number[];
+  /** Lifetime sale counts that announce a milestone (1 is the "first sale"). */
+  saleMilestones: number[];
+  /** Sales that happened before this server started counting. */
+  salesSoFar: number;
   /** Stripe's recommended replay window, in seconds. */
   toleranceSeconds: number;
 }
@@ -45,6 +59,8 @@ export interface GongConfig {
 export type Sink = ((sale: Sale, tier: Tier) => Promise<void>) & {
   /** Set on sinks that publish to the outside world (X...). Sad events never reach them. */
   public?: boolean;
+  /** Sinks without this simply skip milestones. */
+  milestone?: (milestone: Milestone) => Promise<void>;
 };
 
 /** Remembers which sales were already celebrated. */
