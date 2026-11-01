@@ -1,15 +1,79 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    # Release tags are built and tested by release.yml.
+    tags-ignore: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
 jobs:
+  # Node suite: runs on every push and PR.
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix: { node: [20, 22] }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with: { node-version: "${{ matrix.node }}", cache: npm }
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Decides whether the macOS job is needed, so PRs that never touch the Mac app
+  # do not spend macOS minutes. Plain git, no third-party action.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mac: ${{ steps.filter.outputs.mac }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            range="$PR_BASE...HEAD"
+          elif [[ "$PUSH_BEFORE" =~ ^0+$ ]] || ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+            # New branch or rewritten history: no usable base, run everything.
+            echo "mac=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            range="$PUSH_BEFORE...HEAD"
+          fi
+          if git diff --name-only "$range" | grep -qE '^(apps/mac/|package\.json$|\.github/workflows/ci\.yml$)'; then
+            echo "mac=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "mac=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Swift tests and a smoke build of the .app for apps/mac. A skipped job counts
+  # as passing for required checks, so "mac" can be required safely.
+  mac:
+    name: mac
+    needs: changes
+    if: needs.changes.outputs.mac == 'true'
+    # macos-15 ships Xcode 16.x (Swift 6.x), which satisfies swift-tools-version 6.0
+    # and the macOS 14 deployment target.
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    defaults:
+      run:
+        working-directory: apps/mac
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - run: swift test
+      - name: Smoke build the app bundle
+        run: ./scripts/build-app.sh
+      - name: Check bundle version
+        run: scripts/validate-release-tag.sh "v$(scripts/read-version.sh)" --app dist/MRRGong.app
