@@ -22,12 +22,14 @@ function monthlyFactor(interval: unknown, count: number): number | null {
  * Only `active` subscriptions count. Items without a flat `unit_amount` (metered or tiered)
  * are skipped rather than guessed: an honest undercount beats an invented number.
  */
-export function computeMrr(subscriptions: unknown[]): Record<string, number> {
+export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.floor(Date.now() / 1000)): Record<string, number> {
   const out: Record<string, number> = {};
   for (const s of subscriptions) {
     if (!isObj(s) || s.status !== "active" || !isObj(s.items) || !Array.isArray(s.items.data)) continue;
 
     const byCurrency: Record<string, number> = {};
+    /** Monthly factor of the first item: a fixed coupon applies to the invoice, whose cadence that is. */
+    let invoiceFactor: number | null = null;
     for (const it of s.items.data) {
       if (!isObj(it) || !isObj(it.price)) continue;
       const price = it.price;
@@ -35,6 +37,7 @@ export function computeMrr(subscriptions: unknown[]): Record<string, number> {
       if (!rec || typeof price.unit_amount !== "number" || typeof price.currency !== "string") continue;
       const factor = monthlyFactor(rec.interval, typeof rec.interval_count === "number" ? rec.interval_count : 1);
       if (factor === null) continue;
+      invoiceFactor ??= factor;
       const qty = typeof it.quantity === "number" ? it.quantity : 1;
       const cur = price.currency.toUpperCase();
       byCurrency[cur] = (byCurrency[cur] ?? 0) + price.unit_amount * qty * factor;
@@ -44,10 +47,13 @@ export function computeMrr(subscriptions: unknown[]): Record<string, number> {
     for (const [cur, amount] of Object.entries(byCurrency)) {
       let value = amount;
       for (const d of discounts) {
-        const coupon = isObj(d) && isObj(d.coupon) ? d.coupon : null;
-        if (!coupon) continue;
+        if (!isObj(d) || !isObj(d.coupon)) continue;
+        const coupon = d.coupon;
+        // A one-off coupon is not recurring revenue. A repeating one stops at `end`.
+        if (coupon.duration === "once") continue;
+        if (typeof d.end === "number" && d.end <= nowSeconds) continue;
         if (typeof coupon.percent_off === "number") value *= 1 - coupon.percent_off / 100;
-        else if (typeof coupon.amount_off === "number") value -= coupon.amount_off;
+        else if (typeof coupon.amount_off === "number" && invoiceFactor !== null) value -= coupon.amount_off * invoiceFactor;
       }
       out[cur] = (out[cur] ?? 0) + Math.max(0, Math.round(value));
     }
