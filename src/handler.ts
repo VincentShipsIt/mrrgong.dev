@@ -1,6 +1,6 @@
 import { createPicker } from "./copy.ts";
 import { discordPayload, ntfyPayload, renderMilestone, renderSad, renderSale, slackPayload } from "./format.ts";
-import { checkMrrMilestones, checkSaleMilestones } from "./milestones.ts";
+import { checkMrrMilestones, checkSaleMilestones, parseSimulatedMilestone, STREAK_DAYS, type MilestoneRules } from "./milestones.ts";
 import type { MrrSummary } from "./mrr.ts";
 import { eventToSad } from "./sad.ts";
 import { eventToSale, majorUnits, tierFor } from "./sale.ts";
@@ -62,6 +62,13 @@ export function createGong(options: HandlerOptions): Gong {
   const dedupe = options.dedupe ?? resilientDedupe(stateDedupe(state), log);
   const pick = options.pick ?? createPicker();
 
+  const rules: MilestoneRules = {
+    saleCounts: config.saleMilestones,
+    mrrThresholds: config.mrrMilestones,
+    streakDays: STREAK_DAYS,
+    salesSoFar: config.salesSoFar,
+  };
+
   const sinks: Sink[] = [...extraSinks];
   if (config.discordWebhookUrl) sinks.push(discordSink(config.discordWebhookUrl, fetchImpl));
   if (config.slackWebhookUrl) sinks.push(slackSink(config.slackWebhookUrl, fetchImpl));
@@ -101,7 +108,7 @@ export function createGong(options: HandlerOptions): Gong {
 
     if (config.milestones) {
       try {
-        await announceMilestones(await checkSaleMilestones(state, sale));
+        await announceMilestones(await checkSaleMilestones(state, sale, rules));
       } catch (err) {
         log(`milestone check failed: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -139,6 +146,14 @@ export function createGong(options: HandlerOptions): Gong {
         return text(400, "invalid json");
       }
 
+      const preview = parseSimulatedMilestone(event);
+      if (preview) {
+        if (!config.milestones) return text(200, "milestones off");
+        if (sinks.length === 0) return text(200, "no sinks configured");
+        await announceMilestones([preview]);
+        return text(200, "gong");
+      }
+
       const sale = eventToSale(event);
       if (sale) return handleSale(sale);
       const sad = config.sad ? eventToSad(event) : null;
@@ -149,7 +164,7 @@ export function createGong(options: HandlerOptions): Gong {
     async onMrr(summary) {
       if (!config.milestones || sinks.length === 0) return;
       try {
-        await announceMilestones(await checkMrrMilestones(state, summary));
+        await announceMilestones(await checkMrrMilestones(state, summary, rules));
       } catch (err) {
         log(`mrr milestone check failed: ${err instanceof Error ? err.message : String(err)}`);
       }

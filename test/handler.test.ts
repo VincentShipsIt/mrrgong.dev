@@ -196,6 +196,45 @@ describe("milestones", () => {
     expect(titles).toHaveLength(1);
     expect(titles[0]).toContain("MRR just crossed $1,000.");
   });
+  it("uses the configured thresholds and the seeded sale count", async () => {
+    const { handle, fetchMock } = setup({
+      GONG_MILESTONES: "true", SLACK_WEBHOOK_URL: "", GONG_SALE_MILESTONES: "3", GONG_SALES_SO_FAR: "1",
+    });
+    await handle(signed(event({ id: "cs_a", payment_intent: "pi_a" })));
+    await handle(signed(event({ id: "cs_b", payment_intent: "pi_b" })));
+    const titles = sentTo(fetchMock, DISCORD).map((p) => p.embeds[0].title).filter((t) => t.includes("MILESTONE"));
+    expect(titles).toHaveLength(1);
+    expect(titles[0]).toContain("3 sales and counting.");
+  });
+  it("previews a milestone in every channel without touching the real counters", async () => {
+    const state = memoryState();
+    const { handle, fetchMock } = setup({ GONG_MILESTONES: "true" }, [], { state });
+    const res = await handle(signed(JSON.stringify({ id: "evt_sim_1", type: "mrrgong.simulate.milestone", created: 1, livemode: false, data: { object: { kind: "mrr", amount: 5000, currency: "usd" } } })));
+    expect(res.status).toBe(200);
+    expect(sentTo(fetchMock, DISCORD)[0].embeds[0].title).toContain("MRR just crossed $5,000.");
+    expect(sentTo(fetchMock, SLACK)).toHaveLength(1);
+    expect(await state.get("stats:sales")).toBeNull();
+    expect(await state.get("ms:mrr:5000:USD")).toBeNull();
+    // A real first sale afterwards still gets its ceremony.
+    await handle(signed(event()));
+    expect(sentTo(fetchMock, DISCORD).some((p) => p.embeds[0].title.includes("First sale ever"))).toBe(true);
+  });
+  it("a preview is repeatable and bad previews are ignored", async () => {
+    const { handle, fetchMock } = setup({ GONG_MILESTONES: "true", SLACK_WEBHOOK_URL: "" });
+    const preview = { id: "evt_sim_2", type: "mrrgong.simulate.milestone", created: 1, livemode: false, data: { object: { kind: "sales", count: 100 } } };
+    await handle(signed(JSON.stringify(preview)));
+    await handle(signed(JSON.stringify(preview)));
+    expect(sentTo(fetchMock, DISCORD)).toHaveLength(2);
+    const bad = await handle(signed(JSON.stringify({ ...preview, data: { object: { kind: "mrr", amount: -3, currency: "usd" } } })));
+    expect(await bad.text()).toBe("ignored");
+    expect(sentTo(fetchMock, DISCORD)).toHaveLength(2);
+  });
+  it("does not preview when milestones are off", async () => {
+    const { handle, fetchMock } = setup({ GONG_MILESTONES: "false" });
+    const res = await handle(signed(JSON.stringify({ id: "evt_sim_3", type: "mrrgong.simulate.milestone", created: 1, livemode: false, data: { object: { kind: "sales", count: 100 } } })));
+    expect(await res.text()).toBe("milestones off");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it("stays silent when milestones are off, and survives a broken state store", async () => {
     const off = setup({ GONG_MILESTONES: "false", SLACK_WEBHOOK_URL: "" });
     await off.gong.onMrr({ mrrMinor: 999_999, currency: "USD", formatted: "", todayDeltaMinor: 0, streakDays: 0 });

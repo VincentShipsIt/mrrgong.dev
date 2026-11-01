@@ -1,3 +1,4 @@
+import { MRR_THRESHOLDS, SALE_COUNTS } from "./milestones.ts";
 import type { CustomerVisibility, GongConfig, Mode } from "./types.ts";
 
 export type Env = Record<string, string | undefined>;
@@ -33,6 +34,26 @@ function num(env: Env, name: string, fallback: number): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0) throw new Error(`${name} must be a non-negative number, got "${raw}"`);
   return n;
+}
+
+function salesSoFar(env: Env): number | undefined {
+  const raw = env.GONG_SALES_SO_FAR?.trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`GONG_SALES_SO_FAR must be a whole number of 0 or more, got "${raw}"`);
+  return n;
+}
+
+/** Comma list of positive numbers; `none` turns the ladder off. Sorted and de-duplicated. */
+function ladder(env: Env, name: string, fallback: number[], integers: boolean): number[] {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  if (raw.toLowerCase() === "none") return [];
+  const values = raw.split(",").map((part) => Number(part.trim()));
+  if (values.some((n) => !Number.isFinite(n) || n <= 0 || (integers && !Number.isInteger(n)))) {
+    throw new Error(`${name} must be a comma list of positive ${integers ? "whole " : ""}numbers (or "none"), got "${raw}"`);
+  }
+  return [...new Set(values)].sort((a, b) => a - b);
 }
 
 export function loadConfig(env: Env): GongConfig {
@@ -88,6 +109,9 @@ export function loadConfig(env: Env): GongConfig {
     mode,
     sad: flag(env, "GONG_SAD", false),
     milestones: flag(env, "GONG_MILESTONES", true),
+    saleMilestones: ladder(env, "GONG_SALE_MILESTONES", SALE_COUNTS, true),
+    mrrMilestones: ladder(env, "GONG_MRR_MILESTONES", MRR_THRESHOLDS, false),
+    salesSoFar: salesSoFar(env),
     stripeApiKey,
     mrrGoal,
     mrrPollMinutes,

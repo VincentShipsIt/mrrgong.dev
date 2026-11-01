@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkMrrMilestones, checkSaleMilestones } from "../src/milestones.ts";
+import { checkMrrMilestones, checkSaleMilestones, parseSimulatedMilestone } from "../src/milestones.ts";
 import type { MrrSummary } from "../src/mrr.ts";
 import { memoryState } from "../src/state.ts";
 import type { Sale } from "../src/types.ts";
@@ -73,5 +73,65 @@ describe("checkMrrMilestones", () => {
     const state = memoryState();
     await checkMrrMilestones(state, mrr(0, 0, "JPY"));
     expect((await checkMrrMilestones(state, mrr(1000, 0, "JPY")))[0]?.text).toBe("MRR just crossed ¥1,000.");
+  });
+});
+
+describe("custom rules", () => {
+  it("uses the configured sale counts instead of the defaults", async () => {
+    const state = memoryState();
+    const rules = { saleCounts: [3], mrrThresholds: [], streakDays: [] };
+    const fired: string[] = [];
+    for (let i = 1; i <= 10; i++) for (const m of await checkSaleMilestones(state, sale(), rules)) fired.push(`${i}:${m.kind}`);
+    expect(fired).toEqual(["1:first_sale", "3:sales"]);
+  });
+  it("an empty list turns sale counts off but keeps the first sale", async () => {
+    const state = memoryState();
+    const rules = { saleCounts: [], mrrThresholds: [], streakDays: [] };
+    const fired: string[] = [];
+    for (let i = 1; i <= 100; i++) for (const m of await checkSaleMilestones(state, sale(), rules)) fired.push(m.kind);
+    expect(fired).toEqual(["first_sale"]);
+  });
+  it("announces a seeded count milestone and only seeds once", async () => {
+    const state = memoryState();
+    const rules = { saleCounts: [60], mrrThresholds: [], streakDays: [], salesSoFar: 58 };
+    expect(await checkSaleMilestones(state, sale(), rules)).toEqual([]);
+    expect((await checkSaleMilestones(state, sale(), rules)).map((m) => m.text)).toEqual(["60 sales and counting."]);
+    // A later restart with a stale seed must not reset the stored counter.
+    expect(await checkSaleMilestones(state, sale(), rules)).toEqual([]);
+    expect(await state.get("stats:sales")).toBe("61");
+  });
+  it("uses the configured MRR thresholds and streak days", async () => {
+    const state = memoryState();
+    const rules = { saleCounts: [], mrrThresholds: [200, 400], streakDays: [2] };
+    await checkMrrMilestones(state, mrr(10_000), rules);
+    const out = await checkMrrMilestones(state, mrr(50_000, 2), rules);
+    expect(out.map((m) => m.text)).toEqual(["MRR just crossed $400.", "MRR is up 2 days in a row."]);
+  });
+  it("empty MRR thresholds announce nothing", async () => {
+    const state = memoryState();
+    const rules = { saleCounts: [], mrrThresholds: [], streakDays: [] };
+    await checkMrrMilestones(state, mrr(10_000), rules);
+    expect(await checkMrrMilestones(state, mrr(9_000_000, 400), rules)).toEqual([]);
+  });
+});
+
+describe("parseSimulatedMilestone", () => {
+  const ev = (object: unknown, type = "mrrgong.simulate.milestone") => ({ id: "e", type, data: { object } });
+  it("turns an mrr preview into a milestone with a throwaway id", () => {
+    expect(parseSimulatedMilestone(ev({ kind: "mrr", amount: 5000, currency: "usd" }))).toMatchObject({ kind: "mrr", text: "MRR just crossed $5,000." });
+  });
+  it("turns a sales preview into a milestone", () => {
+    expect(parseSimulatedMilestone(ev({ kind: "sales", count: 100 }))).toMatchObject({ kind: "sales", text: "100 sales and counting." });
+    expect(parseSimulatedMilestone(ev({ kind: "sales", count: 1 }))).toMatchObject({ kind: "first_sale" });
+  });
+  it("ignores other event types and malformed or abusive values", () => {
+    expect(parseSimulatedMilestone(ev({ kind: "mrr", amount: 5 }, "checkout.session.completed"))).toBeNull();
+    expect(parseSimulatedMilestone(ev({ kind: "mrr", amount: -1, currency: "usd" }))).toBeNull();
+    expect(parseSimulatedMilestone(ev({ kind: "mrr", amount: "lots", currency: "usd" }))).toBeNull();
+    expect(parseSimulatedMilestone(ev({ kind: "mrr", amount: 5, currency: "<script>" }))).toBeNull();
+    expect(parseSimulatedMilestone(ev({ kind: "sales", count: 1.5 }))).toBeNull();
+    expect(parseSimulatedMilestone(ev({ kind: "wat" }))).toBeNull();
+    expect(parseSimulatedMilestone(null)).toBeNull();
+    expect(parseSimulatedMilestone({ type: "mrrgong.simulate.milestone" })).toBeNull();
   });
 });

@@ -106,3 +106,43 @@ describe("GET /mrr", () => {
     expect((await fetch(`${base}/mrr`)).status).toBe(503);
   });
 });
+
+describe("MRR milestones and the key's mode", () => {
+  const DISCORD = "https://discord.com/api/webhooks/1/abc";
+  async function startSeeded(apiKey: string) {
+    const dir = await mkdtemp(join(tmpdir(), "mrrgong-"));
+    const stateFile = join(dir, "state.json");
+    // Pretend a first reading was already recorded, so this one counts as a crossing.
+    await writeFile(stateFile, JSON.stringify({ "ms:init:mrr:USD": { v: "1" } }));
+    const fetchMock = vi.fn(async (input: string | URL | Request) =>
+      String(input).startsWith("https://api.stripe.com") ? subs(15) : new Response(null, { status: 204 }));
+    const server = createGongServer({
+      stateFile,
+      config: loadConfig({ STRIPE_WEBHOOK_SECRET: "whsec_t", STRIPE_API_KEY: apiKey, DISCORD_WEBHOOK_URL: DISCORD }),
+      fetch: fetchMock as unknown as typeof fetch,
+      historyFile: join(dir, "h.json"),
+      now: () => new Date("2026-11-01T12:00:00Z"),
+    });
+    await new Promise<void>((r) => server.listen(0, r));
+    servers.push(server);
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    return { base, fetchMock };
+  }
+  const discordCalls = (m: { mock: { calls: unknown[][] } }) => m.mock.calls.filter((c) => String(c[0]) === DISCORD);
+
+  it("announces an MRR milestone from a live key", async () => {
+    const { base, fetchMock } = await startSeeded("rk_live_x");
+    await vi.waitFor(() => expect(discordCalls(fetchMock)).toHaveLength(1));
+    expect(String((discordCalls(fetchMock)[0]![1] as RequestInit).body)).toContain("MRR just crossed $1,000.");
+    expect((await fetch(`${base}/mrr`)).status).toBe(200);
+  });
+
+  it("never lets a test-mode key burn real milestones, but still serves /mrr", async () => {
+    const { base, fetchMock } = await startSeeded("rk_test_x");
+    const res = await fetch(`${base}/mrr`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ mrrMinor: 150_000 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(discordCalls(fetchMock)).toHaveLength(0);
+  });
+});

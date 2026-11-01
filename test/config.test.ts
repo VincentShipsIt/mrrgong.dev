@@ -87,3 +87,33 @@ describe("loadConfig", () => {
     expect(c.bigAt).toBe(100);
   });
 });
+
+describe("milestone thresholds", () => {
+  it("defaults to the built-in ladders", () => {
+    const c = loadConfig(base);
+    expect(c.saleMilestones).toEqual([10, 100, 1000, 10_000]);
+    expect(c.mrrMilestones).toEqual([100, 500, 1000, 5000, 10_000, 25_000, 50_000, 100_000]);
+    expect(c.salesSoFar).toBeUndefined();
+  });
+  it("parses comma lists, sorts and de-duplicates them", () => {
+    const c = loadConfig({ ...base, GONG_SALE_MILESTONES: "50, 10,50", GONG_MRR_MILESTONES: "2000,250.5" });
+    expect(c.saleMilestones).toEqual([10, 50]);
+    expect(c.mrrMilestones).toEqual([250.5, 2000]);
+  });
+  it("'none' turns a ladder off", () => {
+    const c = loadConfig({ ...base, GONG_SALE_MILESTONES: "none", GONG_MRR_MILESTONES: " NONE " });
+    expect(c).toMatchObject({ saleMilestones: [], mrrMilestones: [] });
+  });
+  it("rejects junk instead of silently dropping it", () => {
+    expect(() => loadConfig({ ...base, GONG_SALE_MILESTONES: "10,abc" })).toThrow(/GONG_SALE_MILESTONES/);
+    expect(() => loadConfig({ ...base, GONG_SALE_MILESTONES: "10,5.5" })).toThrow(/GONG_SALE_MILESTONES/);
+    expect(() => loadConfig({ ...base, GONG_MRR_MILESTONES: "0" })).toThrow(/GONG_MRR_MILESTONES/);
+    expect(() => loadConfig({ ...base, GONG_MRR_MILESTONES: "-5" })).toThrow(/GONG_MRR_MILESTONES/);
+  });
+  it("parses GONG_SALES_SO_FAR as a whole number", () => {
+    expect(loadConfig({ ...base, GONG_SALES_SO_FAR: "57" }).salesSoFar).toBe(57);
+    expect(loadConfig({ ...base, GONG_SALES_SO_FAR: "0" }).salesSoFar).toBe(0);
+    expect(() => loadConfig({ ...base, GONG_SALES_SO_FAR: "1.5" })).toThrow(/GONG_SALES_SO_FAR/);
+    expect(() => loadConfig({ ...base, GONG_SALES_SO_FAR: "-1" })).toThrow(/GONG_SALES_SO_FAR/);
+  });
+});
