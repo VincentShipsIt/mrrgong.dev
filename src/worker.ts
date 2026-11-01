@@ -1,20 +1,20 @@
 /**
  * Cloudflare Workers entry. Set secrets with `wrangler secret put STRIPE_WEBHOOK_SECRET` etc.
- * Bind a KV namespace as `DEDUPE` (see wrangler.toml) so retried events are announced once
- * even across isolates; without it, dedupe is per isolate and best effort. The same namespace
- * keeps the lifetime sale count for milestones; with no KV, sale milestones are off (an
- * in-memory count would reset with every isolate and announce "first sale" again). MRR
- * milestones need the long-running server: Workers have no MRR watcher.
+ * Bind a KV namespace as `GONG_KV` to keep dedupe keys and milestone counters across isolates.
  */
 import { loadConfig, type Env } from "./config.ts";
-import { fallbackDedupe, kvDedupe, memoryDedupe, type KvLike } from "./dedupe.ts";
 import { createHandler } from "./handler.ts";
-import { createMilestoneTracker, kvMilestoneStore } from "./milestones.ts";
+import { kvState, memoryState, type KVLike } from "./state.ts";
+import { createWriter } from "./writer.ts";
 
-export type WorkerEnv = { DEDUPE?: KvLike } & Record<string, string | KvLike | undefined>;
+// Isolates are reused, so without KV this dedupes within an isolate's lifetime (best effort).
+const fallbackState = memoryState();
 
-// Isolates are reused, so this always backs up the KV store.
-const memory = memoryDedupe();
+/** Workers bindings: plain-string variables and secrets, plus an optional KV namespace. */
+export type WorkerEnv = Record<string, unknown> & { GONG_KV?: KVLike };
+
+const stringsOnly = (env: WorkerEnv): Env =>
+  Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -23,15 +23,15 @@ export default {
     if (pathname !== "/webhook") return new Response("not found", { status: 404 });
     let config;
     try {
-      config = loadConfig(env as Env);
+      config = loadConfig(stringsOnly(env));
     } catch (err) {
       return new Response(err instanceof Error ? err.message : "bad config", { status: 500 });
     }
-    const log = console.error;
-    const dedupe = env.DEDUPE ? fallbackDedupe(kvDedupe(env.DEDUPE), memory, log) : memory;
-    const milestones = env.DEDUPE
-      ? createMilestoneTracker(kvMilestoneStore(env.DEDUPE), { mrr: [], sales: config.saleMilestones, initialSales: config.salesSoFar }, log)
-      : undefined;
-    return createHandler({ config, dedupe, milestones, log })(request);
+    return createHandler({
+      config,
+      state: env.GONG_KV ? kvState(env.GONG_KV) : fallbackState,
+      writer: config.anthropicApiKey ? createWriter({ apiKey: config.anthropicApiKey, model: config.aiModel }) : undefined,
+      log: console.error,
+    })(request);
   },
 };

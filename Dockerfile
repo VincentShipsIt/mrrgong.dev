@@ -8,11 +8,10 @@ RUN npm run build
 
 FROM node:22-alpine
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production GONG_DATA_DIR=/data
 COPY --from=build /app/dist ./dist
 COPY package.json ./
-RUN mkdir /data && chown node:node /data
-ENV GONG_DATA_DIR=/data
+RUN mkdir /data && chown node /data
 VOLUME /data
 USER node
 EXPOSE 8787

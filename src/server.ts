@@ -1,24 +1,23 @@
 import { timingSafeEqual } from "node:crypto";
-import { join } from "node:path";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { customerLabel } from "./format.ts";
 import { GONG_PAGE } from "./gongPage.ts";
-import { fallbackDedupe, fileDedupe, memoryDedupe } from "./dedupe.ts";
-import { announceMilestone, buildSinks, createHandler } from "./handler.ts";
-import { createMilestoneTracker, fileMilestoneStore, memoryMilestoneStore } from "./milestones.ts";
+import { createGong } from "./handler.ts";
 import { createMrrWatcher, type MrrWatcher } from "./mrrWatcher.ts";
 import { formatAmount } from "./sale.ts";
-import type { GongConfig, Milestone, Sink } from "./types.ts";
+import { fileState } from "./fileState.ts";
+import type { GongConfig, Sink } from "./types.ts";
+import { createWriter } from "./writer.ts";
 
 export interface ServerOptions {
   config: GongConfig;
   /** If set, /gong and /events require ?token=... */
   token?: string;
   fetch?: typeof fetch;
-  /** Directory for state that must survive a restart: dedupe keys, MRR snapshots and fired milestones. */
-  dataDir?: string;
-  /** Overrides `<dataDir>/mrr-history.json`. */
+  /** Where the daily MRR snapshots live (Node only). */
   historyFile?: string;
+  /** Dedupe keys and milestone counters (Node only). */
+  stateFile?: string;
   now?: () => Date;
   log?: (message: string) => void;
 }
@@ -45,45 +44,51 @@ export function createGongServer(options: ServerOptions): Server {
   const { config, token, log = () => {} } = options;
   const clients = new Set<ServerResponse>();
 
-  const browserSink: Sink = Object.assign(
-    async (sale: Parameters<Sink>[0], tier: Parameters<Sink>[1]) => {
-      broadcast(null, {
-        amount: formatAmount(sale.amountMinor, sale.currency),
-        tier,
-        kind: sale.kind,
-        label: customerLabel(sale, config.customer),
-      });
-    },
-    { milestone: async (m: Milestone) => broadcast("milestone", m) },
-  );
-  const sinks = buildSinks(config, options.fetch ?? fetch, [browserSink]);
-
-  const milestones = createMilestoneTracker(
-    options.dataDir ? fileMilestoneStore(join(options.dataDir, "milestones.json")) : memoryMilestoneStore(),
-    { mrr: config.mrrMilestones, sales: config.saleMilestones, initialSales: config.salesSoFar },
-    log,
-  );
-  // Test-mode data must never burn through (or persist) the real thresholds.
-  const trackMrr = !config.stripeApiKey?.includes("_test_");
-
   const broadcast = (event: string | null, payload: unknown) => {
     for (const res of clients) res.write(`${event ? `event: ${event}\n` : ""}data: ${JSON.stringify(payload)}\n\n`);
   };
 
+  // Unnamed messages are sales (the Mac app and gong page already parse these). Milestones get
+  // their own event name so older clients ignore them instead of failing to decode.
+  const browserSink: Sink = async (event) => {
+    if (event.type === "sale") {
+      broadcast(null, {
+        amount: formatAmount(event.sale.amountMinor, event.sale.currency),
+        tier: event.tier,
+        kind: event.sale.kind,
+        label: customerLabel(event.sale, config.customer),
+      });
+    } else if (event.type === "milestone") {
+      broadcast("milestone", { text: event.milestone.text, tier: "huge", label: event.message.body });
+    }
+  };
+
+  const stateFile = options.stateFile ?? "mrrgong-state.json";
   let watcher: MrrWatcher | undefined;
+  const gong = createGong({
+    config,
+    fetch: options.fetch,
+    state: fileState(stateFile),
+    extraSinks: [browserSink],
+    writer: config.anthropicApiKey
+      ? createWriter({ apiKey: config.anthropicApiKey, model: config.aiModel, fetch: options.fetch })
+      : undefined,
+    onCelebrated: () => void watcher?.refresh(),
+    log,
+  });
+
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   if (config.stripeApiKey) {
     watcher = createMrrWatcher({
       apiKey: config.stripeApiKey,
       goalMajor: config.mrrGoal,
-      historyFile: options.historyFile ?? join(options.dataDir ?? ".", "mrr-history.json"),
+      historyFile: options.historyFile ?? "mrr-history.json",
       fetch: options.fetch,
       now: options.now,
       log,
       onUpdate: (summary) => {
         broadcast("mrr", summary);
-        if (!trackMrr) return;
-        void milestones.recordMrr(summary.mrrMinor, summary.currency).then((m) => m && announceMilestone(sinks, m, log));
+        void gong.onMrr(summary);
       },
     });
     void watcher.refresh();
@@ -91,15 +96,7 @@ export function createGongServer(options: ServerOptions): Server {
     pollTimer.unref();
   }
 
-  const handle = createHandler({
-    config,
-    fetch: options.fetch,
-    dedupe: options.dataDir ? fallbackDedupe(fileDedupe(join(options.dataDir, "dedupe.json")), memoryDedupe(), log) : memoryDedupe(),
-    sinks,
-    milestones,
-    onCelebrated: () => void watcher?.refresh(),
-    log,
-  });
+  const handle = gong.handle;
 
   const authorised = (url: URL) => !token || safeEqual(url.searchParams.get("token") ?? "", token);
 

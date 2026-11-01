@@ -16,8 +16,8 @@ export const GONG_PAGE = `<!doctype html>
   canvas { position:fixed; inset:0; pointer-events:none; }
   main { position:relative; z-index:1; padding:16px; }
   h1 { font-size:clamp(2rem,8vw,5rem); margin:.2em 0; color:var(--gold); }
-  #milestone { font-size:clamp(1.4rem,5vw,3.2rem); font-weight:800; color:var(--gold); min-height:1.2em; }
   #amount { font-size:clamp(3rem,14vw,10rem); font-weight:800; min-height:1.1em; }
+  #amount.long { font-size:clamp(1.8rem,6vw,4.2rem); line-height:1.15; padding:0 .5em; }
   #who { opacity:.8; min-height:1.4em; }
   button { font:inherit; font-weight:700; padding:.8em 1.6em; border-radius:999px; border:0;
            background:var(--gold); color:#2a2000; cursor:pointer; margin:.4em; }
@@ -30,7 +30,6 @@ export const GONG_PAGE = `<!doctype html>
 <canvas id="c"></canvas>
 <main id="main">
   <h1>🔔 MRR Gong</h1>
-  <div id="milestone"></div>
   <div id="amount"></div>
   <div id="who"></div>
   <div><button id="arm">Click to arm the gong</button><button id="test" class="ghost" hidden>Test strike</button></div>
@@ -72,7 +71,7 @@ export const GONG_PAGE = `<!doctype html>
   }
 
   function celebrate(sale) {
-    if (sale.kind === "refund" || sale.kind === "cancellation") return quiet(sale);
+    $("amount").classList.toggle("long", sale.amount.length > 12);
     $("amount").textContent = sale.amount;
     $("who").textContent = sale.label || "";
     document.title = sale.amount + " 🔔 MRR Gong";
@@ -80,25 +79,6 @@ export const GONG_PAGE = `<!doctype html>
     const strikes = sale.tier === "huge" ? 3 : sale.tier === "big" ? 2 : 1;
     for (let i = 0; i < strikes; i++) setTimeout(() => strike(sale.tier), i * 700);
     confetti(sale.tier === "huge" ? 400 : sale.tier === "big" ? 200 : 80);
-  }
-
-  // Refunds and cancellations: update the text, no gong, no confetti.
-  function quiet(sale) {
-    $("amount").textContent = sale.amount;
-    $("who").textContent = sale.label || "";
-    document.title = "😔 " + sale.amount + " MRR Gong";
-  }
-
-  // Milestones: the full ceremony plus a headline that lingers, then clears.
-  let milestoneTimer;
-  function milestone(m) {
-    $("milestone").textContent = m.title;
-    document.title = m.title + " MRR Gong";
-    clearTimeout(milestoneTimer);
-    milestoneTimer = setTimeout(() => { $("milestone").textContent = ""; }, 30000);
-    $("main").classList.remove("strike"); void $("main").offsetWidth; $("main").classList.add("strike");
-    for (let i = 0; i < 3; i++) setTimeout(() => strike("huge"), i * 900);
-    confetti(500);
   }
 
   $("arm").onclick = () => {
@@ -111,7 +91,10 @@ export const GONG_PAGE = `<!doctype html>
   const es = new EventSource("events" + (token ? "?token=" + encodeURIComponent(token) : ""));
   es.onopen = () => { $("status").textContent = "listening for sales"; };
   es.onerror = () => { $("status").textContent = "reconnecting…"; };
-  es.addEventListener("milestone", (e) => { try { milestone(JSON.parse(e.data)); } catch {} });
   es.onmessage = (e) => { try { celebrate(JSON.parse(e.data)); } catch {} };
+  // Milestones arrive as a named event so older clients can ignore them.
+  es.addEventListener("milestone", (e) => {
+    try { const m = JSON.parse(e.data); celebrate({ amount: m.text, tier: "huge", label: m.label }); } catch {}
+  });
 })();
 </script></body></html>`;
