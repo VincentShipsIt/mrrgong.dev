@@ -123,7 +123,7 @@ curl localhost:8787/mrr
 
 - It re-reads Stripe every `MRR_POLL_MINUTES` and right after each celebrated sale, and keeps one snapshot per UTC day in `mrr-history.json`.
 - **Day streak** = consecutive days MRR ended higher than the day before. Today counts once it beats yesterday; being flat so far today doesn't break the streak. A dip (churn) or a missing day does. The number is never faked.
-- MRR counts `active` subscriptions only, normalised to a month. Percentage and fixed coupons are applied (one-off and ended coupons are ignored); metered/tiered prices are skipped. Multi-currency accounts track the biggest currency.
+- MRR counts `active` subscriptions only, normalised to a month. Percentage and fixed coupons are applied (one-off and ended coupons are ignored; both the older `discount.coupon` and the newer `discount.source.coupon` API shapes are read); metered/tiered prices are skipped. Multi-currency accounts track the biggest currency.
 - The streak starts counting from the day you turn it on.
 - Connected clients also get an `event: mrr` message on `/events`.
 
