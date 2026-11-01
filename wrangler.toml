@@ -1,0 +1,8 @@
+name = "salesgong"
+main = "src/worker.ts"
+compatibility_date = "2026-01-01"
+
+# Secrets: wrangler secret put STRIPE_WEBHOOK_SECRET / DISCORD_WEBHOOK_URL / SLACK_WEBHOOK_URL
+[vars]
+GONG_BIG_AT = "100"
+GONG_HUGE_AT = "1000"

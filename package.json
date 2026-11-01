@@ -1,0 +1,25 @@
+{
+  "name": "salesgong",
+  "version": "0.1.0",
+  "description": "Strike a gong in Discord, Slack and your browser every time Stripe gets you a sale.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "main": "dist/handler.js",
+  "bin": { "salesgong": "dist/cli.js" },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --coverage",
+    "start": "node dist/cli.js",
+    "dev": "node --env-file-if-exists=.env src/cli.ts",
+    "simulate": "node --env-file-if-exists=.env src/simulate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.0.0"
+  }
+}
