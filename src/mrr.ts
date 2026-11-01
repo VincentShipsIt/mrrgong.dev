@@ -21,13 +21,16 @@ function monthlyFactor(interval: unknown, count: number): number | null {
  * MRR in each currency's minor unit from Stripe subscription objects.
  * Only `active` subscriptions count. Items without a flat `unit_amount` (metered or tiered)
  * are skipped rather than guessed: an honest undercount beats an invented number.
+ * Discounts whose `end` has passed are ignored; a fixed `amount_off` comes off each invoice
+ * (once, in the billing interval) before the result is normalised to a month.
  */
-export function computeMrr(subscriptions: unknown[]): Record<string, number> {
+export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.floor(Date.now() / 1000)): Record<string, number> {
   const out: Record<string, number> = {};
   for (const s of subscriptions) {
     if (!isObj(s) || s.status !== "active" || !isObj(s.items) || !Array.isArray(s.items.data)) continue;
 
-    const byCurrency: Record<string, number> = {};
+    // Per currency: what one invoice charges, and what that is per month.
+    const byCurrency: Record<string, { invoice: number; monthly: number }> = {};
     for (const it of s.items.data) {
       if (!isObj(it) || !isObj(it.price)) continue;
       const price = it.price;
@@ -37,19 +40,25 @@ export function computeMrr(subscriptions: unknown[]): Record<string, number> {
       if (factor === null) continue;
       const qty = typeof it.quantity === "number" ? it.quantity : 1;
       const cur = price.currency.toUpperCase();
-      byCurrency[cur] = (byCurrency[cur] ?? 0) + price.unit_amount * qty * factor;
+      const invoice = price.unit_amount * qty;
+      const total = (byCurrency[cur] ??= { invoice: 0, monthly: 0 });
+      total.invoice += invoice;
+      total.monthly += invoice * factor;
     }
 
-    const discounts = Array.isArray(s.discounts) ? s.discounts : [];
-    for (const [cur, amount] of Object.entries(byCurrency)) {
-      let value = amount;
+    const discounts = (Array.isArray(s.discounts) ? s.discounts : []).filter(
+      (d) => !(isObj(d) && typeof d.end === "number" && d.end <= nowSeconds),
+    );
+    for (const [cur, { invoice, monthly }] of Object.entries(byCurrency)) {
+      const ratio = invoice > 0 ? monthly / invoice : 0;
+      let value = invoice;
       for (const d of discounts) {
         const coupon = isObj(d) && isObj(d.coupon) ? d.coupon : null;
         if (!coupon) continue;
         if (typeof coupon.percent_off === "number") value *= 1 - coupon.percent_off / 100;
         else if (typeof coupon.amount_off === "number") value -= coupon.amount_off;
       }
-      out[cur] = (out[cur] ?? 0) + Math.max(0, Math.round(value));
+      out[cur] = (out[cur] ?? 0) + Math.max(0, Math.round(value * ratio));
     }
   }
   return out;

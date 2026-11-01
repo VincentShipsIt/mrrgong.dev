@@ -86,3 +86,25 @@ describe("slackPayload", () => {
     expect(text).toContain("&lt;!channel&gt; &amp; &lt;b&gt;");
   });
 });
+
+describe("sad gong", () => {
+  const refund = sale({ kind: "refund", amountMinor: 1100 });
+  const cancel = sale({ kind: "cancellation", amountMinor: 2900, customerName: undefined, customerEmail: undefined });
+
+  it("has a muted headline with no gong", () => {
+    expect(headline(refund, "normal")).toBe("😔 $11.00 refunded");
+    expect(headline(cancel, "normal")).toBe("😔 $29.00 subscription canceled");
+    expect(headline(refund, "normal")).not.toContain("GONG");
+    expect(headline({ ...refund, livemode: false }, "normal")).toBe("[TEST] 😔 $11.00 refunded");
+  });
+  it("is grey on Discord, and still never pings anyone", () => {
+    const p = discordPayload(refund, "normal", "masked");
+    expect(p.embeds[0]?.color).toBe(0x808080);
+    expect(p.allowed_mentions).toEqual({ parse: [] });
+  });
+  it("is plain in Slack and escapes customer text", () => {
+    const p = slackPayload({ ...refund, customerName: "<!channel>" }, "normal", "masked");
+    expect(p.blocks[0]?.text.text).toContain("&lt;!channel&gt;");
+    expect(p.text).toBe("😔 $11.00 refunded");
+  });
+});

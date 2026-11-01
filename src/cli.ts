@@ -6,7 +6,7 @@ try {
   const config = loadConfig(process.env);
   const port = Number(process.env.PORT ?? 8787);
   const token = process.env.GONG_TOKEN || undefined;
-  const server = createGongServer({ config, token, log: (m) => console.error(`[mrrgong] ${m}`) });
+  const server = createGongServer({ config, token, dataDir: process.env.GONG_DATA_DIR || ".", log: (m) => console.error(`[mrrgong] ${m}`) });
   server.listen(port, () => {
     console.log(`🔔 mrrgong listening on :${port}`);
     console.log(`   Stripe webhook → /webhook   Browser gong → /gong${token ? "?token=…" : ""}`);

@@ -9,6 +9,13 @@ describe("loadConfig", () => {
     expect(c).toMatchObject({ bigAt: 100, hugeAt: 1000, celebrateRenewals: true, customer: "masked", toleranceSeconds: 300 });
   });
 
+  it("keeps the sad gong off unless asked for", () => {
+    expect(loadConfig(base).sad).toBe(false);
+    expect(loadConfig({ ...base, GONG_SAD: "true" }).sad).toBe(true);
+    expect(loadConfig({ ...base, GONG_SAD: "TRUE" }).sad).toBe(true);
+    expect(loadConfig({ ...base, GONG_SAD: "nope" }).sad).toBe(false);
+  });
+
   it("requires the webhook secret", () => {
     expect(() => loadConfig({ DISCORD_WEBHOOK_URL: base.DISCORD_WEBHOOK_URL })).toThrow(/STRIPE_WEBHOOK_SECRET/);
   });

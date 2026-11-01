@@ -1,21 +1,8 @@
+import { memoryDedupe } from "./dedupe.ts";
 import { discordPayload, slackPayload } from "./format.ts";
-import { eventToSale, tierFor } from "./sale.ts";
+import { eventToSad, eventToSale, tierFor } from "./sale.ts";
 import { verifyStripeSignature } from "./stripe.ts";
-import type { CustomerVisibility, DedupeStore, GongConfig, Sink } from "./types.ts";
-
-export function memoryDedupe(max = 5000): DedupeStore {
-  const seen = new Set<string>();
-  return {
-    has: (key) => seen.has(key),
-    add(key) {
-      seen.add(key);
-      if (seen.size > max) {
-        const oldest = seen.values().next().value;
-        if (oldest !== undefined) seen.delete(oldest);
-      }
-    },
-  };
-}
+import { SAD_KINDS, type CustomerVisibility, type DedupeStore, type GongConfig, type Sink } from "./types.ts";
 
 async function postJson(fetchImpl: typeof fetch, url: string, body: unknown): Promise<void> {
   const res = await fetchImpl(url, {
@@ -34,6 +21,8 @@ export function discordSink(url: string, visibility: CustomerVisibility, fetchIm
 export function slackSink(url: string, visibility: CustomerVisibility, fetchImpl: typeof fetch): Sink {
   return (sale, tier) => postJson(fetchImpl, url, slackPayload(sale, tier, visibility));
 }
+
+export { memoryDedupe };
 
 export interface HandlerOptions {
   config: GongConfig;
@@ -77,20 +66,24 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
       return text(400, "invalid json");
     }
 
-    const sale = eventToSale(event);
+    const sale = eventToSale(event) ?? (config.sad ? eventToSad(event) : null);
     if (!sale) return text(200, "ignored");
     if (sale.kind === "renewal" && !config.celebrateRenewals) return text(200, "ignored");
-    if (dedupe.has(sale.dedupeKey)) return text(200, "duplicate");
-    if (sinks.length === 0) return text(200, "no sinks configured");
+    if (await dedupe.has(sale.dedupeKey)) return text(200, "duplicate");
 
-    const tier = tierFor(sale.amountMinor, sale.currency, config);
-    const results = await Promise.allSettled(sinks.map((sink) => sink(sale, tier)));
+    // Bad news stays in private channels.
+    const targets = SAD_KINDS.has(sale.kind) ? sinks.filter((sink) => !sink.public) : sinks;
+    if (targets.length === 0) return text(200, "no sinks configured");
+
+    // Refunds and churn are never "big": a muted message, whatever the amount.
+    const tier = SAD_KINDS.has(sale.kind) ? "normal" : tierFor(sale.amountMinor, sale.currency, config);
+    const results = await Promise.allSettled(targets.map((sink) => sink(sale, tier)));
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     for (const f of failures) log(`sink failed: ${f.reason instanceof Error ? f.reason.message : String(f.reason)}`);
 
     // Only ask Stripe to retry if nobody heard the gong; otherwise a retry would double-post.
     if (failures.length === results.length) return text(500, "all sinks failed");
-    dedupe.add(sale.dedupeKey);
+    await dedupe.add(sale.dedupeKey);
     options.onCelebrated?.();
     return text(200, "gong");
   };

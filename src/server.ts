@@ -1,8 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
+import { join } from "node:path";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { customerLabel } from "./format.ts";
 import { GONG_PAGE } from "./gongPage.ts";
-import { createHandler, memoryDedupe } from "./handler.ts";
+import { fallbackDedupe, fileDedupe, memoryDedupe } from "./dedupe.ts";
+import { createHandler } from "./handler.ts";
 import { createMrrWatcher, type MrrWatcher } from "./mrrWatcher.ts";
 import { formatAmount } from "./sale.ts";
 import type { GongConfig, Sink } from "./types.ts";
@@ -12,7 +14,9 @@ export interface ServerOptions {
   /** If set, /gong and /events require ?token=... */
   token?: string;
   fetch?: typeof fetch;
-  /** Where the daily MRR snapshots live (Node only). */
+  /** Directory for state that must survive a restart: dedupe keys and MRR snapshots. */
+  dataDir?: string;
+  /** Overrides `<dataDir>/mrr-history.json`. */
   historyFile?: string;
   now?: () => Date;
   log?: (message: string) => void;
@@ -59,7 +63,7 @@ export function createGongServer(options: ServerOptions): Server {
     watcher = createMrrWatcher({
       apiKey: config.stripeApiKey,
       goalMajor: config.mrrGoal,
-      historyFile: options.historyFile ?? "mrr-history.json",
+      historyFile: options.historyFile ?? join(options.dataDir ?? ".", "mrr-history.json"),
       fetch: options.fetch,
       now: options.now,
       log,
@@ -73,7 +77,7 @@ export function createGongServer(options: ServerOptions): Server {
   const handle = createHandler({
     config,
     fetch: options.fetch,
-    dedupe: memoryDedupe(),
+    dedupe: options.dataDir ? fallbackDedupe(fileDedupe(join(options.dataDir, "dedupe.json")), memoryDedupe(), log) : memoryDedupe(),
     extraSinks: [browserSink],
     onCelebrated: () => void watcher?.refresh(),
     log,

@@ -37,6 +37,24 @@ describe("computeMrr", () => {
     expect(computeMrr([sub({ discounts: [{ coupon: { amount_off: 1000 } }] })])).toEqual({ USD: 1900 });
     expect(computeMrr([sub({ discounts: [{ coupon: { amount_off: 999999 } }] })])).toEqual({ USD: 0 });
   });
+  it("applies a fixed coupon to the billing-interval amount before normalising to a month", () => {
+    // $120/year with $24 off the yearly invoice is $96/year, so $8/month, not $10 - $24.
+    const yearly = sub({ items: { data: [item(12000, "year")] }, discounts: [{ coupon: { amount_off: 2400 } }] });
+    expect(computeMrr([yearly])).toEqual({ USD: 800 });
+    const quarterly = sub({ items: { data: [item(3000, "month", 3)] }, discounts: [{ coupon: { amount_off: 300 } }] });
+    expect(computeMrr([quarterly])).toEqual({ USD: 900 });
+  });
+  it("applies a fixed coupon once per invoice, not once per item", () => {
+    const two = sub({ items: { data: [item(1000, "year"), item(2000, "year")] }, discounts: [{ coupon: { amount_off: 600 } }] });
+    expect(computeMrr([two])).toEqual({ USD: 200 });
+  });
+  it("ignores a repeating coupon whose discount has ended", () => {
+    const now = 1_800_000_000;
+    const ended = { end: now - 1, coupon: { percent_off: 50, duration: "repeating" } };
+    const running = { end: now + 1000, coupon: { percent_off: 50, duration: "repeating" } };
+    expect(computeMrr([sub({ discounts: [ended] })], now)).toEqual({ USD: 2900 });
+    expect(computeMrr([sub({ discounts: [running] })], now)).toEqual({ USD: 1450 });
+  });
   it("skips metered/tiered items with no unit_amount instead of guessing", () => {
     expect(computeMrr([sub({ items: { data: [item(0, "month", 1, 1, { unit_amount: null })] } })])).toEqual({});
   });

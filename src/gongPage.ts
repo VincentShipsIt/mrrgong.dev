@@ -70,6 +70,7 @@ export const GONG_PAGE = `<!doctype html>
   }
 
   function celebrate(sale) {
+    if (sale.kind === "refund" || sale.kind === "cancellation") return quiet(sale);
     $("amount").textContent = sale.amount;
     $("who").textContent = sale.label || "";
     document.title = sale.amount + " 🔔 MRR Gong";
@@ -77,6 +78,13 @@ export const GONG_PAGE = `<!doctype html>
     const strikes = sale.tier === "huge" ? 3 : sale.tier === "big" ? 2 : 1;
     for (let i = 0; i < strikes; i++) setTimeout(() => strike(sale.tier), i * 700);
     confetti(sale.tier === "huge" ? 400 : sale.tier === "big" ? 200 : 80);
+  }
+
+  // Refunds and cancellations: update the text, no gong, no confetti.
+  function quiet(sale) {
+    $("amount").textContent = sale.amount;
+    $("who").textContent = sale.label || "";
+    document.title = "😔 " + sale.amount + " MRR Gong";
   }
 
   $("arm").onclick = () => {
