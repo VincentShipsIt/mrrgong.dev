@@ -75,6 +75,16 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(m.today.totalMajor, 240, accuracy: 0.001)
     }
 
+    func testRefundIsLoggedQuietlyWithNoGongOrFlash() {
+        let m = makeModel()
+        m.handle(.message(SSEMessage(event: nil, data: #"{"amount":"$49.00","tier":"normal","kind":"refund","label":"Ada"}"#)))
+        m.handle(.message(SSEMessage(event: nil, data: #"{"amount":"$29.00","tier":"normal","kind":"cancellation"}"#)))
+        XCTAssertEqual(m.sales.recent.map(\.kind), [.cancellation, .refund])
+        XCTAssertTrue(player.strikes.isEmpty)
+        XCTAssertEqual(m.flashCount, 0)
+        XCTAssertEqual(m.today.count, 0)
+    }
+
     func testMutedSaleStillLogsAndFlashesButIsSilent() {
         settings.muted = true
         let m = makeModel()

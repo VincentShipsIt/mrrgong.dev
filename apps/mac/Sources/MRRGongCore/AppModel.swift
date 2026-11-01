@@ -171,7 +171,7 @@ public final class AppModel: ObservableObject {
     private func record(_ sale: SaleEvent) {
         sales.add(sale, at: now())
         try? sales.save(to: salesURL)
-        strike(sale.tier)
+        if !sale.kind.isSad { strike(sale.tier) }
     }
 
     private func strike(_ tier: Tier) {

@@ -13,17 +13,24 @@ public enum SaleKind: String, Codable, Sendable {
     case oneTime = "one_time"
     case newSubscription = "new_subscription"
     case renewal
+    case refund
+    case cancellation
 
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         self = SaleKind(rawValue: raw) ?? .oneTime
     }
 
+    /// Refunds and cancellations are logged quietly: no gong, no flash, not counted as sales.
+    public var isSad: Bool { self == .refund || self == .cancellation }
+
     public var title: String {
         switch self {
         case .oneTime: "Sale"
         case .newSubscription: "New subscription"
         case .renewal: "Renewal"
+        case .refund: "Refund"
+        case .cancellation: "Canceled subscription"
         }
     }
 }

@@ -28,7 +28,7 @@ public struct SalesLog: Sendable {
     }
 
     public func today(now: Date) -> (count: Int, totalMajor: Double) {
-        let todays = recent.filter { calendar.isDate($0.date, inSameDayAs: now) }
+        let todays = recent.filter { !$0.kind.isSad && calendar.isDate($0.date, inSameDayAs: now) }
         return (todays.count, todays.reduce(0) { $0 + (Money.parseMajor($1.amount) ?? 0) })
     }
 
