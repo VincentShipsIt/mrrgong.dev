@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mrrgong.dev: strike a gong every time Stripe gets you a sale</title>
+<meta name="description" content="A tiny open-source Stripe webhook receiver that celebrates every sale in Discord, Slack, a browser gong with sound and confetti, and a macOS menu bar app. Bigger sales get a bigger gong.">
+<meta name="theme-color" content="#14110B">
+<link rel="canonical" href="https://mrrgong.dev/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='34' r='24' fill='%23F5B301'/%3E%3Ccircle cx='32' cy='34' r='9' fill='%2314110B'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="mrrgong.dev">
+<meta property="og:title" content="mrrgong.dev: strike a gong every time Stripe gets you a sale">
+<meta property="og:description" content="Stripe webhook to Discord, Slack, a browser gong and a macOS menu bar app. Zero runtime dependencies, MIT.">
+<meta property="og:url" content="https://mrrgong.dev/">
+<meta property="og:image" content="https://mrrgong.dev/popover.png">
+<meta property="og:image:alt" content="The mrrgong menu bar popover with MRR, day streak, goal and recent sales tiles">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="mrrgong.dev: strike a gong every time Stripe gets you a sale">
+<meta name="twitter:description" content="Stripe webhook to Discord, Slack, a browser gong and a macOS menu bar app. Zero runtime dependencies, MIT.">
+<meta name="twitter:image" content="https://mrrgong.dev/popover.png">
+<style>
+  :root { color-scheme: dark; --gold:#F5B301; --bg:#14110B; --fg:#FFF4D6; --muted:#CBBF9F; --card:#1F1A10; --line:#3A3220; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  a { color:var(--gold); text-underline-offset:3px; }
+  a:hover { color:#FFD25A; }
+  :focus-visible { outline:3px solid var(--gold); outline-offset:3px; border-radius:6px; }
+  .skip { position:absolute; left:-999px; top:8px; background:var(--gold); color:#2A2000; padding:8px 14px; border-radius:8px; font-weight:700; z-index:20; }
+  .skip:focus { left:8px; }
+  canvas { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:10; }
+  .wrap { max-width:960px; margin:0 auto; padding:0 20px; }
+  header.top { display:flex; justify-content:space-between; align-items:center; padding:18px 0; gap:12px; }
+  .brand { font-weight:800; color:var(--fg); text-decoration:none; font-size:1.1rem; }
+  .brand span { color:var(--gold); }
+  nav { display:flex; gap:18px; flex-wrap:wrap; }
+  nav a { color:var(--muted); text-decoration:none; }
+  nav a:hover { color:var(--gold); text-decoration:underline; }
+  .hero { text-align:center; padding:48px 0 24px; }
+  h1 { font-size:clamp(2.2rem,7vw,4.2rem); line-height:1.08; margin:0 0 .4em; letter-spacing:-.02em; }
+  h1 em { color:var(--gold); font-style:normal; }
+  .lede { max-width:620px; margin:0 auto; color:var(--muted); font-size:1.15rem; }
+  h2 { font-size:clamp(1.5rem,4vw,2.1rem); margin:0 0 .5em; letter-spacing:-.01em; }
+  section { padding:44px 0; }
+  .demo { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:28px 20px; text-align:center; margin-top:28px; }
+  .stage { min-height:7.5rem; display:grid; place-items:center; }
+  #amount { font-size:clamp(3rem,13vw,6.5rem); font-weight:800; color:var(--gold); line-height:1; font-variant-numeric:tabular-nums; }
+  #who { color:var(--muted); min-height:1.6em; margin:.4em 0 1em; }
+  .strike { animation:shake .6s; }
+  @keyframes shake { 0%,100%{transform:none} 20%{transform:translateX(-12px) rotate(-1deg)} 40%{transform:translateX(10px) rotate(1deg)} 60%{transform:translateX(-6px)} 80%{transform:translateX(4px)} }
+  fieldset { border:0; margin:0 0 18px; padding:0; }
+  legend { color:var(--muted); margin:0 auto 10px; padding:0; font-size:.95rem; }
+  .tiers { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; }
+  .tiers input { position:absolute; opacity:0; width:1px; height:1px; }
+  .tiers label { display:block; padding:.6em 1.1em; border:1px solid var(--line); border-radius:12px; cursor:pointer; background:#18130A; min-width:9.5em; }
+  .tiers label b { display:block; color:var(--fg); }
+  .tiers label small { color:var(--muted); }
+  .tiers input:checked + label { border-color:var(--gold); background:#2B2410; box-shadow:0 0 0 1px var(--gold); }
+  .tiers input:focus-visible + label { outline:3px solid var(--gold); outline-offset:3px; }
+  button, .btn { font:inherit; font-weight:700; padding:.8em 1.7em; border-radius:12px; border:2px solid var(--gold); background:var(--gold); color:#2A2000; cursor:pointer; text-decoration:none; display:inline-block; }
+  button:hover, .btn:hover { background:#FFD25A; color:#2A2000; }
+  .btn.ghost { background:transparent; color:var(--fg); border-color:var(--line); }
+  .btn.ghost:hover { background:#2B2410; color:var(--fg); border-color:var(--gold); }
+  .hint { color:var(--muted); font-size:.9rem; margin:14px 0 0; }
+  .cta { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:22px; }
+  ol.steps { list-style:none; padding:0; margin:20px 0 0; display:grid; grid-template-columns:minmax(0,1fr); gap:16px; counter-reset:s; }
+  ol.steps li { counter-increment:s; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; }
+  ol.steps li::before { content:counter(s); display:inline-grid; place-items:center; width:1.9em; height:1.9em; border-radius:50%; background:var(--gold); color:#2A2000; font-weight:800; margin-right:.6em; }
+  ol.steps h3 { display:inline; font-size:1.05rem; margin:0; }
+  pre { margin:12px 0 0; padding:14px 16px; background:#0C0A06; border:1px solid var(--line); border-radius:12px; overflow-x:auto; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; color:#FFE9A8; }
+  pre:focus-visible { outline:3px solid var(--gold); }
+  p.note { color:var(--muted); overflow-wrap:anywhere; }
+  p.note code { font-size:.9em; }
+  .mac { display:grid; grid-template-columns:minmax(0,1fr); gap:28px; align-items:center; }
+  @media (min-width:760px) { .mac { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); } }
+  .mac img { width:100%; max-width:360px; height:auto; border-radius:16px; border:1px solid var(--line); justify-self:center; }
+  ul.ticks { padding-left:1.2em; }
+  ul.ticks li { margin:.4em 0; }
+  ul.ticks li::marker { color:var(--gold); }
+  footer { border-top:1px solid var(--line); padding:28px 0 48px; color:var(--muted); font-size:.95rem; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } .strike { animation:none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<canvas id="confetti" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/" aria-label="mrrgong.dev home">mrrgong<span>.dev</span></a>
+    <nav aria-label="Primary">
+      <a href="#demo">Demo</a>
+      <a href="#setup">Setup</a>
+      <a href="#mac">Mac app</a>
+      <a href="https://github.com/VincentShipsIt/mrrgong.dev">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <div class="hero">
+      <h1>Strike a gong every time <em>Stripe</em> gets you a sale.</h1>
+      <p class="lede">A tiny open-source webhook receiver. Every sale becomes a loud, celebratory message in Discord and Slack, a browser gong with sound and confetti, and a macOS menu bar app. Bigger sales get a bigger gong.</p>
+      <div class="cta">
+        <a class="btn" href="#demo">Hear the gong</a>
+        <a class="btn ghost" href="https://github.com/VincentShipsIt/mrrgong.dev">View on GitHub</a>
+      </div>
+    </div>
+
+    <section id="demo" aria-labelledby="demo-h">
+      <h2 id="demo-h">Try the gong</h2>
+      <p class="note">Pick a sale size, then strike. Sound is synthesised in your browser, nothing is downloaded or sent anywhere.</p>
+      <div class="demo">
+        <div id="stage" class="stage"><div id="amount" aria-hidden="true">$49.00</div></div>
+        <div id="who" role="status" aria-live="polite">Ready when you are</div>
+        <fieldset>
+          <legend>Sale size</legend>
+          <div class="tiers">
+            <span><input type="radio" name="tier" id="t1" value="normal" checked><label for="t1"><b>1 strike</b><small>a $49 sale</small></label></span>
+            <span><input type="radio" name="tier" id="t2" value="big"><label for="t2"><b>2 strikes</b><small>a $240 subscriber</small></label></span>
+            <span><input type="radio" name="tier" id="t3" value="huge"><label for="t3"><b>3 strikes</b><small>a $2,500 sale</small></label></span>
+          </div>
+        </fieldset>
+        <button id="strike" type="button">Strike the gong</button>
+        <p class="hint" id="motion-note" hidden>Reduced motion is on, so the confetti and shake are skipped. The sound still plays.</p>
+      </div>
+    </section>
+
+    <section id="setup" aria-labelledby="setup-h">
+      <h2 id="setup-h">Three commands to your first gong</h2>
+      <p class="note">Runs on Cloudflare Workers (free tier is plenty), Node, Docker, Bun or Deno. Zero runtime dependencies.</p>
+      <ol class="steps">
+        <li><h3>Install and set your Stripe signing secret</h3>
+<pre tabindex="0"><code>npm i &amp;&amp; npx wrangler secret put STRIPE_WEBHOOK_SECRET</code></pre></li>
+        <li><h3>Add your Discord and/or Slack webhook</h3>
+<pre tabindex="0"><code>npx wrangler secret put DISCORD_WEBHOOK_URL   # and/or SLACK_WEBHOOK_URL</code></pre></li>
+        <li><h3>Deploy</h3>
+<pre tabindex="0"><code>npx wrangler deploy</code></pre></li>
+      </ol>
+      <p class="note">Then in Stripe add a webhook endpoint at <code>https://&lt;your-host&gt;/webhook</code> for <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code> and <code>invoice.paid</code>. Try it without Stripe: <code>npm run simulate 49</code>. The full guide, including Docker and the browser gong, is in the <a href="https://github.com/VincentShipsIt/mrrgong.dev#quick-start">README</a>.</p>
+    </section>
+
+    <section id="mac" aria-labelledby="mac-h">
+      <div class="mac">
+        <div>
+          <h2 id="mac-h">A menu bar app for your Mac</h2>
+          <p class="note">A native SwiftUI menu bar app with no third-party dependencies. It shows your numbers at a glance and rings when a sale lands.</p>
+          <ul class="ticks">
+            <li>MRR and today's change, with a 14 day sparkline</li>
+            <li>Day streak, labelled in days up</li>
+            <li>Goal progress, labelled in percent left</li>
+            <li>Sales today and this month</li>
+            <li>A live list of recent sales</li>
+          </ul>
+          <p class="note">Every number carries its unit, and the numbers are never faked. It talks to your own server over <code>/mrr</code> and <code>/events</code>.</p>
+          <a class="btn ghost" href="https://github.com/VincentShipsIt/mrrgong.dev/tree/main/apps/mac">Build the Mac app</a>
+        </div>
+        <img src="popover.png" width="480" height="780" alt="The mrrgong menu bar popover: tiles for monthly recurring revenue with a sparkline, a 12 day streak, 38 percent of the goal left, sales today, this month, and a list of recent sales" loading="lazy">
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>MIT licensed. Made for indie hackers.</span>
+    <a href="https://github.com/VincentShipsIt/mrrgong.dev">github.com/VincentShipsIt/mrrgong.dev</a>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  const AMOUNTS = { normal: "$49.00", big: "$240.00", huge: "$2,500.00" };
+  const LABELS = { normal: "GONG! A sale", big: "GONG GONG! New subscriber", huge: "GONGGGG!!! A big one" };
+  let ctx = null;
+
+  function strike(tier) {
+    if (!ctx) return;
+    const t0 = ctx.currentTime, base = tier === "huge" ? 70 : tier === "big" ? 82 : 98;
+    const master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+    // Inharmonic partials are what make a gong a gong rather than a bell.
+    [[1,1],[1.51,.7],[2.03,.55],[2.64,.45],[3.28,.3],[4.7,.2],[6.1,.12]].forEach(([r,g]) => {
+      const o = ctx.createOscillator(), e = ctx.createGain();
+      o.type = "sine"; o.frequency.value = base * r;
+      e.gain.setValueAtTime(0, t0);
+      e.gain.linearRampToValueAtTime(g * 0.4, t0 + 0.01);
+      e.gain.exponentialRampToValueAtTime(0.0001, t0 + (tier === "huge" ? 7 : 4.5) / Math.sqrt(r));
+      o.connect(e); e.connect(master); o.start(t0); o.stop(t0 + 8);
+    });
+  }
+
+  const cv = $("confetti"), g = cv.getContext("2d"); let bits = [];
+  function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+  addEventListener("resize", resize); resize();
+  function confetti(n) {
+    for (let i = 0; i < n; i++) bits.push({ x: Math.random()*cv.width, y: -20, vx: (Math.random()-.5)*4, vy: 2+Math.random()*5,
+      s: 5+Math.random()*7, c: "hsl(" + (30+Math.random()*30) + ",100%," + (50+Math.random()*20) + "%)", r: Math.random()*6 });
+    if (bits.length === n) requestAnimationFrame(tick);
+  }
+  function tick() {
+    g.clearRect(0,0,cv.width,cv.height);
+    bits = bits.filter(b => b.y < cv.height + 20);
+    for (const b of bits) { b.x += b.vx; b.y += b.vy; b.r += .1; g.fillStyle = b.c; g.save(); g.translate(b.x,b.y); g.rotate(b.r); g.fillRect(-b.s/2,-b.s/4,b.s,b.s/2); g.restore(); }
+    if (bits.length) requestAnimationFrame(tick);
+  }
+
+  function showMotionNote() { $("motion-note").hidden = !reduce.matches; }
+  showMotionNote();
+  if (reduce.addEventListener) reduce.addEventListener("change", showMotionNote);
+
+  $("strike").addEventListener("click", () => {
+    const tier = document.querySelector('input[name="tier"]:checked').value;
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) ctx = new AC();
+    }
+    if (ctx && ctx.state === "suspended") ctx.resume();
+    $("amount").textContent = AMOUNTS[tier];
+    $("who").textContent = LABELS[tier] + " (demo, not a real sale)";
+    const strikes = tier === "huge" ? 3 : tier === "big" ? 2 : 1;
+    for (let i = 0; i < strikes; i++) setTimeout(() => strike(tier), i * 700);
+    if (!reduce.matches) {
+      const s = $("stage"); s.classList.remove("strike"); void s.offsetWidth; s.classList.add("strike");
+      confetti(tier === "huge" ? 400 : tier === "big" ? 200 : 80);
+    }
+  });
+})();
+</script>
+</body>
+</html>
