@@ -180,9 +180,10 @@ public final class AppModel: ObservableObject {
     }
 
     private func record(_ milestone: MilestoneEvent) {
-        let title = milestone.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return }
-        milestones.insert(MilestoneRecord(date: now(), kind: milestone.kind, title: title), at: 0)
+        let text = milestone.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let label = milestone.label?.trimmingCharacters(in: .whitespacesAndNewlines)
+        milestones.insert(MilestoneRecord(date: now(), text: text, label: label?.isEmpty == false ? label : nil), at: 0)
         if milestones.count > Self.milestoneCapacity { milestones.removeLast(milestones.count - Self.milestoneCapacity) }
         strike(.huge)
     }

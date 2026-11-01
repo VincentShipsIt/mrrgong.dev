@@ -36,10 +36,18 @@ struct MilestoneList: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(Theme.gold)
                                     .frame(width: 14)
-                                Text(milestone.title)
-                                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                                    .foregroundStyle(Theme.gold)
-                                    .lineLimit(2)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(milestone.text)
+                                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                                        .foregroundStyle(Theme.gold)
+                                        .lineLimit(2)
+                                    if let label = milestone.label {
+                                        Text(label)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Theme.muted)
+                                            .lineLimit(2)
+                                    }
+                                }
                                 Spacer(minLength: 4)
                                 Text(Formatting.relative(milestone.date, now: context.date))
                                     .font(.system(size: 11))

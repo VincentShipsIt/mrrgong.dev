@@ -72,25 +72,21 @@ public struct SaleEvent: Codable, Equatable, Sendable {
 }
 
 /// A named `milestone` SSE event: the server's celebration of a round number.
+/// `tier` is always "huge" today and is ignored: a milestone gets the full gong.
 public struct MilestoneEvent: Codable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable {
-        case firstSale = "first_sale"
-        case sales
-        case mrr
-    }
+    public var text: String
+    /// An extra flavour line (meme modes, AI writer). Customer-free, may be absent.
+    public var label: String?
 
-    public var kind: Kind
-    public var title: String
-
-    public init(kind: Kind, title: String) {
-        self.kind = kind
-        self.title = title
+    public init(text: String, label: String? = nil) {
+        self.text = text
+        self.label = label
     }
 }
 
 public struct MilestoneRecord: Equatable, Identifiable, Sendable {
     public let id = UUID()
     public let date: Date
-    public let kind: MilestoneEvent.Kind
-    public let title: String
+    public let text: String
+    public let label: String?
 }

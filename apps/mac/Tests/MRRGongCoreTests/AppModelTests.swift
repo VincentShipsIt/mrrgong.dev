@@ -112,8 +112,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(player.strikes.isEmpty)
     }
 
-    private func milestoneMessage(title: String = "Gong! 100 sales.", data: String? = nil) -> SSEStreamEvent {
-        .message(SSEMessage(event: "milestone", data: data ?? #"{"kind":"sales","title":"\#(title)"}"#))
+    private func milestoneMessage(text: String = "100 sales and counting.", data: String? = nil) -> SSEStreamEvent {
+        .message(SSEMessage(event: "milestone", data: data ?? #"{"text":"\#(text)","tier":"huge","label":"Cha-ching."}"#))
     }
 
     func testMilestoneEventStrikesHugeFlashesAndIsKept() {
@@ -121,10 +121,19 @@ final class AppModelTests: XCTestCase {
         m.handle(milestoneMessage())
         XCTAssertEqual(player.strikes, [.huge])
         XCTAssertEqual(m.flashCount, 1)
-        XCTAssertEqual(m.milestones.map(\.title), ["Gong! 100 sales."])
-        XCTAssertEqual(m.milestones[0].kind, .sales)
+        XCTAssertEqual(m.milestones.map(\.text), ["100 sales and counting."])
+        XCTAssertEqual(m.milestones[0].label, "Cha-ching.")
         XCTAssertEqual(m.milestones[0].date, t0)
         XCTAssertTrue(m.sales.recent.isEmpty, "a milestone is not a sale")
+    }
+
+    func testMilestoneWithoutLabelIsFine() {
+        let m = makeModel()
+        m.handle(milestoneMessage(data: #"{"text":"First sale ever.","tier":"huge"}"#))
+        m.handle(milestoneMessage(data: #"{"text":"MRR up 7 days.","label":"  "}"#))
+        XCTAssertEqual(m.milestones.map(\.text), ["MRR up 7 days.", "First sale ever."])
+        XCTAssertNil(m.milestones[0].label)
+        XCTAssertNil(m.milestones[1].label)
     }
 
     func testMutedMilestoneStillShowsAndFlashesButIsSilent() {
@@ -140,8 +149,8 @@ final class AppModelTests: XCTestCase {
         let m = makeModel()
         m.handle(milestoneMessage(data: "not json"))
         m.handle(milestoneMessage(data: "{}"))
-        m.handle(milestoneMessage(data: #"{"kind":"mystery","title":"x"}"#))
-        m.handle(milestoneMessage(data: #"{"kind":"mrr","title":"   "}"#))
+        m.handle(milestoneMessage(data: #"{"text":"   ","tier":"huge"}"#))
+        m.handle(milestoneMessage(data: #"{"text":5}"#))
         XCTAssertTrue(m.milestones.isEmpty)
         XCTAssertTrue(player.strikes.isEmpty)
         XCTAssertEqual(m.flashCount, 0)
@@ -149,9 +158,9 @@ final class AppModelTests: XCTestCase {
 
     func testMilestonesKeepNewestFirstAndAreCapped() {
         let m = makeModel()
-        for i in 1...7 { m.handle(milestoneMessage(title: "Milestone \(i)")) }
+        for i in 1...7 { m.handle(milestoneMessage(text: "Milestone \(i)")) }
         XCTAssertEqual(m.milestones.count, AppModel.milestoneCapacity)
-        XCTAssertEqual(m.milestones.first?.title, "Milestone 7")
+        XCTAssertEqual(m.milestones.first?.text, "Milestone 7")
     }
 
     func testStrikeTestRespectsMute() {
