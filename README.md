@@ -61,6 +61,10 @@ stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.ses
 | `STRIPE_WEBHOOK_SECRET` | required | Endpoint signing secret (`whsec_…`) |
 | `DISCORD_WEBHOOK_URL` | – | Must be an `https://discord.com/api/webhooks/…` URL |
 | `SLACK_WEBHOOK_URL` | – | Must be an `https://hooks.slack.com/…` URL |
+| `NTFY_TOPIC` | – | Push notifications to your phone via [ntfy](https://ntfy.sh). Letters, digits, `-`, `_`; treat it like a password. Also gets refunds when `GONG_SAD` is on |
+| `NTFY_SERVER` | `https://ntfy.sh` | Self-hosted ntfy. https only |
+| `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET` | – | Post milestones to X. All four or none (OAuth 1.0a user keys with write access). Public: never posts customers, descriptions, refunds or churn |
+| `X_POST_ALL_OVER` | – | Major units. Also post ordinary live sales at or above this amount (amount only). Unset = milestones only |
 | `GONG_BIG_AT` / `GONG_HUGE_AT` | `100` / `1000` | Major units (dollars, not cents) for the louder tiers. Not currency-converted. |
 | `GONG_RENEWALS` | `true` | Set `false` to celebrate only new customers |
 | `GONG_SAD` | `false` | Set `true` to log refunds and cancellations quietly (muted message, grey embed, no gong). They never reach public channels like X |

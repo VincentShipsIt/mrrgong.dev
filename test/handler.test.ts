@@ -190,6 +190,17 @@ describe("handler", () => {
       expect(publicSink).toHaveBeenCalledTimes(1);
     });
 
+    it("built-in ntfy gets refunds but built-in X never does", async () => {
+      const x = { X_API_KEY: "a", X_API_SECRET: "b", X_ACCESS_TOKEN: "c", X_ACCESS_SECRET: "d", X_POST_ALL_OVER: "1" };
+      const { handle, fetchMock } = setup({ GONG_SAD: "true", NTFY_TOPIC: "gong", DISCORD_WEBHOOK_URL: "", SLACK_WEBHOOK_URL: "", ...x });
+      await handle(signed(refundEvent()));
+      const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+      expect(urls).toEqual(["https://ntfy.sh"]);
+      await handle(signed(event()));
+      const after = fetchMock.mock.calls.map((c) => String(c[0]));
+      expect(after.sort()).toEqual(["https://api.x.com/2/tweets", "https://ntfy.sh", "https://ntfy.sh"].sort());
+    });
+
     it("says nothing when only public sinks exist", async () => {
       const publicSink = Object.assign(vi.fn(async () => {}), { public: true });
       const { handle } = setup({ GONG_SAD: "true", DISCORD_WEBHOOK_URL: "", SLACK_WEBHOOK_URL: "" }, [publicSink]);

@@ -1,19 +1,12 @@
 import { memoryDedupe } from "./dedupe.ts";
 import { discordMilestonePayload, discordPayload, slackMilestonePayload, slackPayload } from "./format.ts";
+import { postJson } from "./http.ts";
+import { ntfySink } from "./ntfy.ts";
 import { parseSimulatedMilestone, type MilestoneTracker } from "./milestones.ts";
 import { eventToSad, eventToSale, tierFor } from "./sale.ts";
 import { verifyStripeSignature } from "./stripe.ts";
+import { xSink } from "./x.ts";
 import { SAD_KINDS, type CustomerVisibility, type DedupeStore, type GongConfig, type Milestone, type Sink } from "./types.ts";
-
-async function postJson(fetchImpl: typeof fetch, url: string, body: unknown): Promise<void> {
-  const res = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`webhook responded ${res.status}`);
-}
 
 export function discordSink(url: string, visibility: CustomerVisibility, fetchImpl: typeof fetch): Sink {
   return Object.assign((sale: Parameters<Sink>[0], tier: Parameters<Sink>[1]) => postJson(fetchImpl, url, discordPayload(sale, tier, visibility)), {
@@ -27,11 +20,13 @@ export function slackSink(url: string, visibility: CustomerVisibility, fetchImpl
   });
 }
 
-/** The configured chat sinks plus any extras (the browser gong, ...). */
+/** The configured chat, push and social sinks plus any extras (the browser gong, ...). */
 export function buildSinks(config: GongConfig, fetchImpl: typeof fetch, extraSinks: Sink[] = []): Sink[] {
   const sinks: Sink[] = [...extraSinks];
   if (config.discordWebhookUrl) sinks.push(discordSink(config.discordWebhookUrl, config.customer, fetchImpl));
   if (config.slackWebhookUrl) sinks.push(slackSink(config.slackWebhookUrl, config.customer, fetchImpl));
+  if (config.ntfyTopic) sinks.push(ntfySink(config.ntfyServer, config.ntfyTopic, config.customer, fetchImpl));
+  if (config.x) sinks.push(xSink({ creds: config.x, postAllOverMajor: config.xPostAllOver, fetch: fetchImpl }));
   return sinks;
 }
 

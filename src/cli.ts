@@ -10,7 +10,7 @@ try {
   server.listen(port, () => {
     console.log(`🔔 mrrgong listening on :${port}`);
     console.log(`   Stripe webhook → /webhook   Browser gong → /gong${token ? "?token=…" : ""}`);
-    if (!config.discordWebhookUrl && !config.slackWebhookUrl) console.log("   (no Discord/Slack webhook set: browser gong only)");
+    if (!config.discordWebhookUrl && !config.slackWebhookUrl && !config.ntfyTopic && !config.x) console.log("   (no Discord/Slack/ntfy/X channel set: browser gong only)");
   });
 } catch (err) {
   console.error(`[mrrgong] ${err instanceof Error ? err.message : err}`);

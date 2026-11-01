@@ -77,4 +77,23 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, GONG_MRR_MILESTONES: "lots" })).toThrow(/GONG_MRR_MILESTONES/);
     expect(() => loadConfig({ ...base, GONG_SALE_MILESTONES: "0,5" })).toThrow(/GONG_SALE_MILESTONES/);
   });
+
+  it("parses ntfy and validates it", () => {
+    expect(loadConfig(base)).toMatchObject({ ntfyTopic: undefined, ntfyServer: "https://ntfy.sh" });
+    expect(loadConfig({ ...base, NTFY_TOPIC: "my-gong_1", NTFY_SERVER: "https://ntfy.example.com/" })).toMatchObject({
+      ntfyTopic: "my-gong_1", ntfyServer: "https://ntfy.example.com",
+    });
+    expect(() => loadConfig({ ...base, NTFY_SERVER: "http://ntfy.sh" })).toThrow(/NTFY_SERVER/);
+    expect(() => loadConfig({ ...base, NTFY_SERVER: "nope" })).toThrow(/NTFY_SERVER/);
+    expect(() => loadConfig({ ...base, NTFY_TOPIC: "../etc/passwd" })).toThrow(/NTFY_TOPIC/);
+  });
+
+  it("requires all four X credentials or none", () => {
+    const x = { X_API_KEY: "a", X_API_SECRET: "b", X_ACCESS_TOKEN: "c", X_ACCESS_SECRET: "d" };
+    expect(loadConfig(base).x).toBeUndefined();
+    expect(loadConfig({ ...base, ...x, X_POST_ALL_OVER: "250" })).toMatchObject({
+      x: { apiKey: "a", apiSecret: "b", accessToken: "c", accessSecret: "d" }, xPostAllOver: 250,
+    });
+    expect(() => loadConfig({ ...base, X_API_KEY: "a" })).toThrow(/X_API_SECRET/);
+  });
 });

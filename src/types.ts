@@ -28,10 +28,25 @@ export interface Sale {
 
 export type CustomerVisibility = "full" | "masked" | "none";
 
+export interface XCredentials {
+  apiKey: string;
+  apiSecret: string;
+  accessToken: string;
+  accessSecret: string;
+}
+
 export interface GongConfig {
   stripeWebhookSecret: string;
   discordWebhookUrl?: string;
   slackWebhookUrl?: string;
+  /** ntfy topic for phone push notifications. Treat the topic name as a secret. */
+  ntfyTopic?: string;
+  /** ntfy server, https only. Defaults to https://ntfy.sh. */
+  ntfyServer: string;
+  /** OAuth 1.0a user credentials for posting milestones to X. All four or none. */
+  x?: XCredentials;
+  /** Major units. Also post ordinary live sales to X at or above this amount. */
+  xPostAllOver?: number;
   /** Major units. A sale at or above this gets the "big" gong. */
   bigAt: number;
   /** Major units. A sale at or above this gets the full ceremony. */

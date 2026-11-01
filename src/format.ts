@@ -46,7 +46,8 @@ const DISCORD_COLOR: Record<Tier, number> = {
 
 const SAD_COLOR = 0x808080; // grey
 
-function details(sale: Sale, visibility: CustomerVisibility): string {
+/** Customer line and description, per the visibility setting. */
+export function details(sale: Sale, visibility: CustomerVisibility): string {
   const lines: string[] = [];
   const who = customerLabel(sale, visibility);
   if (who) lines.push(who);
