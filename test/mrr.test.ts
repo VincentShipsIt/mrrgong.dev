@@ -60,7 +60,40 @@ describe("computeMrr", () => {
   });
 });
 
+describe("computeMrr on the current Stripe API shape", () => {
+  // Newer API versions nest the coupon under `source` instead of putting it on the discount.
+  const sourced = (coupon: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+    object: "discount", source: { type: "coupon", coupon: { object: "coupon", ...coupon } }, ...extra,
+  });
+  it("applies a percentage coupon found under discount.source.coupon", () => {
+    expect(computeMrr([sub({ discounts: [sourced({ percent_off: 50, duration: "forever" })] })])).toEqual({ USD: 1450 });
+  });
+  it("ignores one-off and ended coupons in that shape too", () => {
+    const now = 1_700_000_000;
+    expect(computeMrr([sub({ discounts: [sourced({ percent_off: 50, duration: "once" })] })], now)).toEqual({ USD: 2900 });
+    expect(computeMrr([sub({ discounts: [sourced({ percent_off: 50, duration: "repeating" }, { end: now - 1 })] })], now)).toEqual({ USD: 2900 });
+  });
+  it("skips a coupon that arrived unexpanded as a bare id", () => {
+    expect(computeMrr([sub({ discounts: [{ source: { type: "coupon", coupon: "SAVE50" } }, "di_123"] })])).toEqual({ USD: 2900 });
+  });
+});
+
 describe("fetchActiveSubscriptions", () => {
+  it("asks Stripe to expand the coupon inside each discount", async () => {
+    const f = vi.fn().mockResolvedValue(Response.json({ data: [], has_more: false }));
+    await fetchActiveSubscriptions("rk_test_x", f as unknown as typeof fetch);
+    expect(new URL(String(f.mock.calls[0]?.[0])).searchParams.getAll("expand[]")).toEqual(["data.discounts.source.coupon"]);
+  });
+  it("falls back to plain discounts on API versions that cannot expand it", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(new Response("invalid expand", { status: 400 }))
+      .mockResolvedValueOnce(Response.json({ data: [{ id: "sub_1" }], has_more: true }))
+      .mockResolvedValueOnce(Response.json({ data: [{ id: "sub_2" }], has_more: false }));
+    const out = await fetchActiveSubscriptions("rk_test_x", f as unknown as typeof fetch);
+    expect(out).toHaveLength(2);
+    expect(new URL(String(f.mock.calls[1]?.[0])).searchParams.getAll("expand[]")).toEqual(["data.discounts"]);
+    expect(new URL(String(f.mock.calls[2]?.[0])).searchParams.getAll("expand[]")).toEqual(["data.discounts"]);
+  });
   it("paginates and sends the bearer key", async () => {
     const f = vi.fn()
       .mockResolvedValueOnce(Response.json({ data: [{ id: "sub_1" }], has_more: true }))
