@@ -18,6 +18,12 @@ final class SSEParserTests: XCTestCase {
         XCTAssertEqual(out, [SSEMessage(event: "mrr", data: "{}")])
     }
 
+    func testMilestoneEventAsTheServerSendsIt() {
+        var p = SSEParser()
+        let out = feed(&p, "event: milestone\ndata: {\"kind\":\"sales\",\"title\":\"Gong! 100 sales.\"}\n\n")
+        XCTAssertEqual(out, [SSEMessage(event: "milestone", data: "{\"kind\":\"sales\",\"title\":\"Gong! 100 sales.\"}")])
+    }
+
     func testIgnoresCommentsAndPings() {
         var p = SSEParser()
         XCTAssertEqual(feed(&p, ": connected\n\n: ping\n\n"), [])

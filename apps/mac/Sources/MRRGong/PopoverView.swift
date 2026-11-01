@@ -7,12 +7,49 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             DashboardView(model: model)
+            if !model.milestones.isEmpty {
+                MilestoneList(milestones: model.milestones)
+            }
             SalesList(sales: model.sales.recent)
         }
         .padding(12)
         .frame(width: Theme.width)
         .background(Theme.background)
         .preferredColorScheme(.dark)
+    }
+}
+
+/// Server-announced milestones, newest first, kept for the session.
+struct MilestoneList: View {
+    let milestones: [MilestoneRecord]
+    private let visibleCount = 3
+
+    var body: some View {
+        Tile {
+            VStack(alignment: .leading, spacing: 8) {
+                TileLabel(text: "Milestones")
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    VStack(spacing: 8) {
+                        ForEach(milestones.prefix(visibleCount)) { milestone in
+                            HStack(spacing: 8) {
+                                Image(systemName: "bell.badge.fill")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Theme.gold)
+                                    .frame(width: 14)
+                                Text(milestone.title)
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Theme.gold)
+                                    .lineLimit(2)
+                                Spacer(minLength: 4)
+                                Text(Formatting.relative(milestone.date, now: context.date))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.muted)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

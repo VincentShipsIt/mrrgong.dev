@@ -70,3 +70,27 @@ public struct SaleEvent: Codable, Equatable, Sendable {
         self.label = label
     }
 }
+
+/// A named `milestone` SSE event: the server's celebration of a round number.
+public struct MilestoneEvent: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case firstSale = "first_sale"
+        case sales
+        case mrr
+    }
+
+    public var kind: Kind
+    public var title: String
+
+    public init(kind: Kind, title: String) {
+        self.kind = kind
+        self.title = title
+    }
+}
+
+public struct MilestoneRecord: Equatable, Identifiable, Sendable {
+    public let id = UUID()
+    public let date: Date
+    public let kind: MilestoneEvent.Kind
+    public let title: String
+}
