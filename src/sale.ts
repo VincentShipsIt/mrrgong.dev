@@ -14,6 +14,10 @@ export function majorUnits(amountMinor: number, currency: string): number {
   return amountMinor / 10 ** decimals(currency);
 }
 
+export function minorUnits(major: number, currency: string): number {
+  return Math.round(major * 10 ** decimals(currency));
+}
+
 export function formatAmount(amountMinor: number, currency: string): string {
   const major = majorUnits(amountMinor, currency);
   try {

@@ -41,6 +41,8 @@ export interface HandlerOptions {
   dedupe?: DedupeStore;
   extraSinks?: Sink[];
   log?: (message: string) => void;
+  /** Called after a sale was announced to at least one sink. */
+  onCelebrated?: () => void;
 }
 
 const text = (status: number, body: string) => new Response(body, { status, headers: { "content-type": "text/plain" } });
@@ -89,6 +91,7 @@ export function createHandler(options: HandlerOptions): (request: Request) => Pr
     // Only ask Stripe to retry if nobody heard the gong; otherwise a retry would double-post.
     if (failures.length === results.length) return text(500, "all sinks failed");
     dedupe.add(sale.dedupeKey);
+    options.onCelebrated?.();
     return text(200, "gong");
   };
 }

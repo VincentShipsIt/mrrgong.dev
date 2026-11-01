@@ -4,3 +4,5 @@ coverage
 .env
 .dev.vars
 .agents/sessions
+mrr-history.json
+mrr-history.json.tmp

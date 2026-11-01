@@ -57,9 +57,27 @@ stripe listen --forward-to localhost:8787/webhook && stripe trigger checkout.ses
 | `GONG_BIG_AT` / `GONG_HUGE_AT` | `100` / `1000` | Major units (dollars, not cents) for the louder tiers. Not currency-converted. |
 | `GONG_RENEWALS` | `true` | Set `false` to celebrate only new customers |
 | `GONG_CUSTOMER` | `masked` | `full`, `masked` (name, or `a**@domain.com`), or `none` |
-| `PORT`, `GONG_TOKEN` | `8787`, – | Node server only |
+| `STRIPE_API_KEY` | – | Restricted read-only key (`rk_…`). Turns on the MRR watcher |
+| `MRR_GOAL`, `MRR_POLL_MINUTES` | –, `15` | Goal in major units; poll interval |
+| `PORT`, `GONG_TOKEN` | `8787`, – | Node server only. The token also protects `/mrr` |
 
 Test-mode events are labelled `[TEST]`.
+
+## MRR watcher and day streak (Node server)
+
+Set a **restricted, read-only** Stripe key (Subscriptions: read, nothing else) and the server tracks your MRR:
+
+```sh
+STRIPE_API_KEY=rk_live_...   MRR_GOAL=2000   npm run dev
+curl localhost:8787/mrr
+# {"mrrMinor":124700,"currency":"USD","formatted":"$1,247.00","todayDeltaMinor":2900,"streakDays":12,"goalMinor":200000,"goalPercentLeft":38}
+```
+
+- It re-reads Stripe every `MRR_POLL_MINUTES` and right after each celebrated sale, and keeps one snapshot per UTC day in `mrr-history.json`.
+- **Day streak** = consecutive days MRR ended higher than the day before. Today counts once it beats yesterday; being flat so far today doesn't break the streak. A dip (churn) or a missing day does. The number is never faked.
+- MRR counts `active` subscriptions only, normalised to a month. Percentage coupons are applied; metered/tiered prices are skipped. Fixed-amount coupons are only exact on monthly plans. Multi-currency accounts track the biggest currency.
+- The streak starts counting from the day you turn it on.
+- Connected clients also get an `event: mrr` message on `/events`.
 
 ## What counts as a sale
 
@@ -73,7 +91,7 @@ Refunds, failed payments and `payment_intent.succeeded` (which duplicates the ab
 ## Known limits
 
 - Dedupe is in-memory. A restart (or a different Workers isolate) can in rare cases re-announce a retried event. A KV/Redis-backed `DedupeStore` is a ~10-line addition.
-- On Workers there is no browser gong (no shared state between isolates). It needs the Node server, or a Durable Object, which is a possible future addition.
+- On Workers there is no browser gong or MRR history (no shared state between isolates). It needs the Node server, or a Durable Object, which is a possible future addition.
 - Newer Stripe API versions no longer put `payment_intent` on invoices; dedupe then falls back to the invoice id.
 
 ## Development

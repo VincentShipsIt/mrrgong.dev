@@ -43,6 +43,17 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, DISCORD_WEBHOOK_URL: "not a url" })).toThrow(/DISCORD_WEBHOOK_URL/);
   });
 
+  it("parses the optional MRR watcher settings", () => {
+    const c = loadConfig({ ...base, STRIPE_API_KEY: "rk_live_abc", MRR_GOAL: "2000", MRR_POLL_MINUTES: "5" });
+    expect(c).toMatchObject({ stripeApiKey: "rk_live_abc", mrrGoal: 2000, mrrPollMinutes: 5 });
+    expect(loadConfig(base)).toMatchObject({ stripeApiKey: undefined, mrrGoal: undefined, mrrPollMinutes: 15 });
+  });
+
+  it("rejects obviously wrong Stripe API keys and poll intervals", () => {
+    expect(() => loadConfig({ ...base, STRIPE_API_KEY: "whsec_nope" })).toThrow(/STRIPE_API_KEY/);
+    expect(() => loadConfig({ ...base, MRR_POLL_MINUTES: "0" })).toThrow(/MRR_POLL_MINUTES/);
+  });
+
   it("treats empty strings as unset", () => {
     const c = loadConfig({ ...base, SLACK_WEBHOOK_URL: "", GONG_BIG_AT: "" });
     expect(c.slackWebhookUrl).toBeUndefined();

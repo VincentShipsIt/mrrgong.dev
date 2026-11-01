@@ -28,6 +28,11 @@ export interface GongConfig {
   hugeAt: number;
   celebrateRenewals: boolean;
   customer: CustomerVisibility;
+  /** Restricted, read-only Stripe key (rk_...). Enables the MRR watcher. */
+  stripeApiKey?: string;
+  /** Major units. Shows "% left" towards this MRR goal. */
+  mrrGoal?: number;
+  mrrPollMinutes: number;
   /** Stripe's recommended replay window, in seconds. */
   toleranceSeconds: number;
 }
