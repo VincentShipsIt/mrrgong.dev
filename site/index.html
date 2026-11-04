@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>mrrgong.dev: strike a gong every time Stripe gets you a sale</title>
-<meta name="description" content="A tiny open-source Stripe webhook receiver that celebrates every sale in Discord, Slack, a browser gong with sound and confetti, and a macOS menu bar app. Bigger sales get a bigger gong.">
+<meta name="description" content="A tiny open-source Stripe webhook receiver that celebrates every sale in Discord, Slack, your phone, a browser gong with sound and confetti, and a macOS menu bar app. Three message modes, milestone streaks and an X post for the big moments.">
 <meta name="theme-color" content="#14110B">
 <link rel="canonical" href="https://mrrgong.dev/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='34' r='24' fill='%23F5B301'/%3E%3Ccircle cx='32' cy='34' r='9' fill='%2314110B'/%3E%3C/svg%3E">
@@ -78,6 +78,13 @@
   ul.ticks { padding-left:1.2em; }
   ul.ticks li { margin:.4em 0; }
   ul.ticks li::marker { color:var(--gold); }
+  .feats { list-style:none; padding:0; margin:20px 0 0; display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
+  @media (min-width:760px) { .feats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  .feats li { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 18px; }
+  .feats h3 { margin:0 0 .3em; font-size:1.05rem; color:var(--gold); }
+  .feats p { margin:0; color:var(--muted); }
+  .feats p + p { margin-top:.6em; }
+  .feats code { font-size:.9em; }
   footer { border-top:1px solid var(--line); padding:28px 0 48px; color:var(--muted); font-size:.95rem; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } .strike { animation:none; } }
@@ -91,6 +98,7 @@
     <a class="brand" href="/" aria-label="mrrgong.dev home">mrrgong<span>.dev</span></a>
     <nav aria-label="Primary">
       <a href="#demo">Demo</a>
+      <a href="#more">Features</a>
       <a href="#setup">Setup</a>
       <a href="#mac">Mac app</a>
       <a href="https://github.com/VincentShipsIt/mrrgong.dev">GitHub</a>
@@ -100,7 +108,7 @@
   <main id="main">
     <div class="hero">
       <h1>Strike a gong every time <em>Stripe</em> gets you a sale.</h1>
-      <p class="lede">A tiny open-source webhook receiver. Every sale becomes a loud, celebratory message in Discord and Slack, a browser gong with sound and confetti, and a macOS menu bar app. Bigger sales get a bigger gong.</p>
+      <p class="lede">A tiny open-source webhook receiver. Every sale becomes a loud, celebratory message in Discord and Slack, on your phone, in a browser gong with sound and confetti, and in a macOS menu bar app. Bigger sales get a bigger gong, and your milestones get a ceremony.</p>
       <div class="cta">
         <a class="btn" href="#demo">Hear the gong</a>
         <a class="btn ghost" href="https://github.com/VincentShipsIt/mrrgong.dev">View on GitHub</a>
@@ -124,6 +132,30 @@
         <button id="strike" type="button">Strike the gong</button>
         <p class="hint" id="motion-note" hidden>Reduced motion is on, so the confetti and shake are skipped. The sound still plays.</p>
       </div>
+    </section>
+
+    <section id="more" aria-labelledby="more-h">
+      <h2 id="more-h">More than a ding</h2>
+      <p class="note">Everything below is opt-in and off until you set it. Milestone messages and X posts carry only amounts and counts, never customer details.</p>
+      <ul class="feats">
+        <li>
+          <h3>Three message modes</h3>
+          <p><b>Calm</b> is the default. <b>Indie</b> says "MRR go brrr" and "Tell your mom". <b>Broker</b> says "Sold." and "The phones are ringing". Each has 10+ lines per sale size and never repeats one back to back. Switch with <code>GONG_MODE</code>.</p>
+        </li>
+        <li>
+          <h3>Milestones and streaks</h3>
+          <p>Your first sale, the 10th, 100th and 1,000th, MRR crossing $100 up to $100k, and MRR up 7, 30, 100 or 365 days in a row. Each fires once, survives restarts and only counts live-mode sales.</p>
+          <p>MRR and streak milestones need the Node server; on Workers, sale counts work with a KV namespace.</p>
+        </li>
+        <li>
+          <h3>Phone push with ntfy</h3>
+          <p>Set <code>NTFY_TOPIC</code> and every gong lands on your phone through <a href="https://ntfy.sh">ntfy</a>. Use a long random topic name, or self-host and set <code>NTFY_SERVER</code>.</p>
+        </li>
+        <li>
+          <h3>Milestones on X</h3>
+          <p>With your X keys set, milestones post a customer-free sentence to X. Sad gongs (refunds, cancellations) never go there. Check X's current API write limits before relying on it.</p>
+        </li>
+      </ul>
     </section>
 
     <section id="setup" aria-labelledby="setup-h">
