@@ -3,6 +3,13 @@ import { formatAmount } from "./sale.ts";
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null;
 
+/** The coupon of a discount: on the discount itself, or under `source` on newer API versions. */
+const couponOf = (d: unknown): Obj | null => {
+  if (!isObj(d)) return null;
+  if (isObj(d.coupon)) return d.coupon;
+  return isObj(d.source) && isObj(d.source.coupon) ? d.source.coupon : null;
+};
+
 /** Average days per month. */
 const MONTH_WEEKS = 52 / 12;
 
@@ -47,8 +54,8 @@ export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.f
     for (const [cur, amount] of Object.entries(byCurrency)) {
       let value = amount;
       for (const d of discounts) {
-        if (!isObj(d) || !isObj(d.coupon)) continue;
-        const coupon = d.coupon;
+        const coupon = couponOf(d);
+        if (!isObj(d) || !coupon) continue;
         // A one-off coupon is not recurring revenue. A repeating one stops at `end`.
         if (coupon.duration === "once") continue;
         if (typeof d.end === "number" && d.end <= nowSeconds) continue;
@@ -64,13 +71,23 @@ export function computeMrr(subscriptions: unknown[], nowSeconds: number = Math.f
 export async function fetchActiveSubscriptions(apiKey: string, fetchImpl: typeof fetch = fetch, maxPages = 50): Promise<unknown[]> {
   const all: unknown[] = [];
   let after: string | undefined;
+  // Newer API versions keep the coupon under `source` and only inline it when asked; older ones
+  // reject that expand with a 400, so fall back to plain discounts and stay there.
+  let expand = "data.discounts.source.coupon";
   for (let page = 0; page < maxPages; page++) {
     const url = new URL("https://api.stripe.com/v1/subscriptions");
     url.searchParams.set("status", "active");
     url.searchParams.set("limit", "100");
-    url.searchParams.append("expand[]", "data.discounts");
     if (after) url.searchParams.set("starting_after", after);
-    const res = await fetchImpl(url, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) });
+    const request = (expandPath: string) => {
+      url.searchParams.set("expand[]", expandPath);
+      return fetchImpl(url, { headers: { authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(15_000) });
+    };
+    let res = await request(expand);
+    if (res.status === 400 && expand !== "data.discounts") {
+      expand = "data.discounts";
+      res = await request(expand);
+    }
     if (!res.ok) throw new Error(`Stripe API responded ${res.status}`);
     const body: unknown = await res.json();
     if (!isObj(body) || !Array.isArray(body.data)) throw new Error("unexpected Stripe response");

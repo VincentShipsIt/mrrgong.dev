@@ -87,6 +87,20 @@ describe("eventToSale", () => {
     expect(eventToSale(invoice({ payment_intent: null }))?.dedupeKey).toBe("in_1");
   });
 
+  it("maps a current-API invoice.paid, where the invoice has no payment_intent field", () => {
+    // Shape per Stripe's 2025+ API: payments moved to `payments`, the subscription to `parent`.
+    const sale = eventToSale({
+      id: "evt_basil", type: "invoice.paid", created: 1_700_000_000, livemode: true,
+      data: { object: {
+        id: "in_basil", object: "invoice", amount_paid: 2900, currency: "usd", billing_reason: "subscription_create",
+        customer_name: "Grace Hopper", customer_email: "grace@example.com",
+        parent: { type: "subscription_details", subscription_details: { subscription: "sub_1" } },
+        payments: { data: [{ payment: { type: "payment_intent", payment_intent: "pi_basil" } }] },
+        lines: { data: [{ description: "1 × Pro (at $29.00 / month)" }] },
+      } },
+    });
+    expect(sale).toMatchObject({ dedupeKey: "in_basil", amountMinor: 2900, currency: "USD", kind: "new_subscription", description: "1 × Pro (at $29.00 / month)" });
+  });
   it("accepts an expanded payment_intent object", () => {
     expect(eventToSale(checkout({ payment_intent: { id: "pi_x" } }))?.dedupeKey).toBe("pi_x");
   });
